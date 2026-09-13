@@ -13,7 +13,10 @@
     "seed": "tsx server/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "d1:migrate:local": "wrangler d1 migrations apply DB --local",
+    "d1:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "d1:smoke": "wrangler dev --local"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",
@@ -23,6 +26,8 @@
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
+    "hono": "^4.13.7",
+    "jose": "^6.2.12",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.4",
@@ -33,6 +38,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260911.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.8",
     "@types/cors": "^2.8.17",
@@ -47,7 +53,8 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "wrangler": "^4.131.1"
   },
   "engines": {
     "node": ">=22.5"
@@ -55,6 +62,10 @@
   "allowScripts": {
     "esbuild@0.28.2": true,
     "esbuild@0.21.5": true,
-    "esbuild@0.25.12": true
+    "esbuild@0.25.12": true,
+    "core-js@3.50.0": true,
+    "esbuild@0.28.1": true,
+    "fsevents@2.3.3": true,
+    "workerd@1.20260911.1": true
   }
 }

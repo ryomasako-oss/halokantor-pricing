@@ -1,0 +1,30 @@
+name = "halokantor-pricing"
+compatibility_date = "2025-01-01"
+main = "server/worker/index.ts"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "halokantor-pricing"
+database_id = "d1d9be2b-db8b-4b76-84b8-dba6807e7e3d"
+migrations_dir = "migrations"
+
+[assets]
+directory = "./dist/client"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[vars]
+NODE_ENV = "production"
+
+# Brute-force protection: Workers isolates have no shared in-memory counter,
+# so login/password attempts and the AI assistant are throttled through
+# Cloudflare's edge-native Rate Limiting binding instead of express-rate-limit.
+[[ratelimits]]
+name = "AUTH_LIMITER"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
+
+[[ratelimits]]
+name = "ASSISTANT_LIMITER"
+namespace_id = "1002"
+simple = { limit = 20, period = 60 }
