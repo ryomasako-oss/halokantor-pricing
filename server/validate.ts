@@ -13,17 +13,24 @@ export const assumptionsSchema = z.object({
   step: z.number().int().min(1).max(1_000_000),
   months: z.number().int().min(1).max(120),
   includeLogistics: z.boolean(),
+}).refine((a) => a.leaderMargin <= a.targetMargin, {
+  message: "leaderMargin tidak boleh melebihi targetMargin.",
+  path: ["leaderMargin"],
 });
 
+/* qty/cogs/rrp bounds are sized so that, even with the max 2000 items per
+   quote (see snapshotSchema), qty * cogs summed across every line stays
+   comfortably under Number.MAX_SAFE_INTEGER (~9e15): 50,000 * 50,000,000 *
+   2000 = 5e15. Loosening any of the three needs re-checking that math. */
 export const itemSchema = z.object({
   id: z.string().min(1).max(64),
   lineNo: z.number().int().min(0),
   code: z.string().max(64).default(""),
   name: z.string().min(1).max(300),
   uom: z.string().max(32).default("Pcs"),
-  qty: z.number().min(0).max(1e9),
-  cogs: z.number().min(0).max(1e12),
-  rrp: z.number().min(0).max(1e12),
+  qty: z.number().min(0).max(50_000),
+  cogs: z.number().min(0).max(50_000_000),
+  rrp: z.number().min(0).max(50_000_000),
   role: z.enum(["LEADER", "CORE", "PROFIT"]),
   estCogs: z.boolean().optional(),
   manualPrice: z.array(z.number().nullable()).length(3).optional(),
@@ -35,7 +42,7 @@ export const regionSchema = z.object({
   name: z.string().min(1).max(120),
   share: z.number().min(0).max(1),
   deliveries: z.number().min(0).max(1000),
-  cost: z.number().min(0).max(1e12),
+  cost: z.number().min(0).max(100_000_000),
 });
 
 export const metaSchema = z.object({

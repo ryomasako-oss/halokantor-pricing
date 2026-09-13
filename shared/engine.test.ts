@@ -47,6 +47,23 @@ describe("landed cost", () => {
     expect(e.blended).toBeCloseTo(4, 6);
     expect(e.regions[0].modifier).toBeCloseTo(4, 6);
   });
+
+  it("normalizes region shares that don't sum to 1", () => {
+    // Shares sum to 0.5 instead of 1 — should split cogsValue as if scaled to 100%,
+    // matching the equivalent basket where the shares already sum to 1.
+    const halved: Region[] = [
+      { id: "a", name: "A", share: 0.25, deliveries: 4, cost: 100000 },
+      { id: "b", name: "B", share: 0.25, deliveries: 2, cost: 50000 },
+    ];
+    const full: Region[] = [
+      { id: "a", name: "A", share: 0.5, deliveries: 4, cost: 100000 },
+      { id: "b", name: "B", share: 0.5, deliveries: 2, cost: 50000 },
+    ];
+    const eHalved = computeEngine(A({ includeLogistics: true }), [item()], halved);
+    const eFull = computeEngine(A({ includeLogistics: true }), [item()], full);
+    expect(eHalved.blended).toBeCloseTo(eFull.blended, 6);
+    expect(eHalved.rows[0].landed).toBeCloseTo(eFull.rows[0].landed, 6);
+  });
 });
 
 describe("S1 full margin", () => {

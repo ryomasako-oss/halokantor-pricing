@@ -429,7 +429,8 @@ export async function parseClientList(file: File): Promise<ParsedItems> {
       code: col.code >= 0 ? text(row[col.code]) : "",
       name,
       uom: col.uom >= 0 ? text(row[col.uom]) || "Pcs" : "Pcs",
-      qty: qty > 0 ? qty : 1,
+      // Only a missing/blank qty column defaults to 1 — an explicit 0 is kept as-is.
+      qty: Number.isFinite(qty) ? qty : 1,
       cogs: Math.round(cogs),
       rrp: rrp > 0 ? Math.round(rrp) : 0,
       role: (["LEADER", "CORE", "PROFIT"].includes(roleRaw) ? roleRaw : "CORE") as ItemRole,

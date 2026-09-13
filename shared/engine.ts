@@ -95,7 +95,10 @@ export function computeEngine(
 
   const computedRegions: ComputedRegion[] = regions.map((r) => {
     const monthlyCost = finite(r.deliveries) * finite(r.cost);
-    const value = cogsValue * finite(r.share);
+    // Shares are normalized so a basket that doesn't sum to 100% still
+    // splits cogsValue proportionally instead of silently under/over-counting it.
+    const share = shareTotal > 0 ? finite(r.share) / shareTotal : 0;
+    const value = cogsValue * share;
     return { ...r, monthlyCost, value, modifier: value > 0 ? monthlyCost / value : 0 };
   });
 
