@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { all } from "../../db.d1";
 import { auditRecent } from "../audit";
-import { requireAuth, requireRole } from "../auth";
+import { requireAuth, requirePermission } from "../auth";
 import type { Env } from "../env";
 
 export const approvalsRouter = new Hono<Env>();
@@ -29,6 +29,6 @@ approvalsRouter.get("/", async (c) => {
   return c.json({ approvals });
 });
 
-approvalsRouter.get("/audit", requireRole("manager"), async (c) => {
+approvalsRouter.get("/audit", requirePermission("view_audit"), async (c) => {
   return c.json({ audit: await auditRecent(c.env.DB, 200) });
 });

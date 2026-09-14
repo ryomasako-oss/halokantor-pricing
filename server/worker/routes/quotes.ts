@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { all, get, run, stmt, batch } from "../../db.d1";
 import { audit, auditFor } from "../audit";
-import { atLeast, requireAuth, requireRole } from "../auth";
+import { requireAuth, requirePermission } from "../auth";
+import { hasPermission } from "../../../shared/permissions";
 import { snapshotSchema, zodMessage } from "../../validate";
 import {
   EDITABLE_STATUSES,
@@ -24,7 +25,7 @@ quotesRouter.use(requireAuth);
 
 /** Reps may only change their own quotes; managers and admins may change any. */
 function canEdit(user: User, createdBy: number): boolean {
-  return user.id === createdBy || atLeast(user.role, "manager");
+  return user.id === createdBy || hasPermission(user.role, "edit_all_quotes");
 }
 
 quotesRouter.get("/", async (c) => {
@@ -264,7 +265,7 @@ quotesRouter.post("/:id/submit", async (c) => {
   const { breaches, monthly_value, net_margin } = await breachesFor(c.env.DB, quote);
   const clean = isWithinPolicy(breaches);
   // A manager submitting a quote that breaks no rule is approved on the spot.
-  const autoApprove = clean && atLeast(user.role, "manager");
+  const autoApprove = clean && hasPermission(user.role, "decide_quotes");
   const now = new Date().toISOString();
 
   await batch(c.env.DB, [
@@ -311,7 +312,7 @@ quotesRouter.post("/:id/submit", async (c) => {
   return c.json({ quote: await findQuote(c.env.DB, id), breaches, autoApproved: autoApprove });
 });
 
-quotesRouter.post("/:id/decide", requireRole("manager"), async (c) => {
+quotesRouter.post("/:id/decide", requirePermission("decide_quotes"), async (c) => {
   const user = c.get("user")!;
   const id = Number(c.req.param("id"));
   const quote = await findQuote(c.env.DB, id);
@@ -431,7 +432,7 @@ quotesRouter.delete("/:id", async (c) => {
   if (!quote) return c.json({ error: "Quotation tidak ditemukan." }, 404);
 
   const isOwnDraft = quote.created_by === user.id && quote.status === "draft";
-  if (!isOwnDraft && !atLeast(user.role, "admin")) {
+  if (!isOwnDraft && !hasPermission(user.role, "delete_quotes")) {
     return c.json({ error: "Hanya draft milik sendiri yang bisa dihapus. Selain itu perlu admin." }, 403);
   }
   await run(c.env.DB, "DELETE FROM quotes WHERE id = ?", id);

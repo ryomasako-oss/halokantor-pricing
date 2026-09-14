@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { all, get, run } from "../../db.d1";
 import { audit } from "../audit";
-import { requireAuth, requireRole } from "../auth";
+import { requireAuth, requirePermission } from "../auth";
 import { clientSchema, zodMessage } from "../../validate";
 import type { Client } from "../../../shared/types";
 import type { Env } from "../env";
@@ -58,7 +58,7 @@ clientsRouter.put("/:id", async (c) => {
   return c.json({ client });
 });
 
-clientsRouter.delete("/:id", requireRole("manager"), async (c) => {
+clientsRouter.delete("/:id", requirePermission("delete_clients"), async (c) => {
   const user = c.get("user")!;
   const id = Number(c.req.param("id"));
   const used = await get<{ n: number }>(c.env.DB, "SELECT COUNT(*) AS n FROM quotes WHERE client_id = ?", id);

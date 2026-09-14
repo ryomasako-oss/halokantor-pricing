@@ -73,7 +73,7 @@ export function CatalogPage() {
             dan Jasa. Keduanya diekspor dari Accurate.
           </p>
         </div>
-        {can("manager") && (
+        {can("import_catalog") && (
           <div className="row-wrap">
             <button
               className="btn ghost"
@@ -89,7 +89,7 @@ export function CatalogPage() {
             <button className="btn" onClick={() => setModal("master")}>
               <Icon name="table" size={15} /> Impor daftar barang (harga jual)
             </button>
-            {can("admin") && (
+            {can("delete_catalog") && (
               <button
                 className="btn danger"
                 onClick={() => {
@@ -206,7 +206,7 @@ export function CatalogPage() {
                     >
                       Stok{sortBy === "stock" && (sortDir === "asc" ? " ▲" : " ▼")}
                     </th>
-                    {can("manager") && <th aria-label="Aksi" />}
+                    {can("edit_catalog") && <th aria-label="Aksi" />}
                   </tr>
                 </thead>
                 <tbody>
@@ -221,7 +221,7 @@ export function CatalogPage() {
                       </td>
                       <td className="num">{item.list_price > 0 ? grp(item.list_price) : "—"}</td>
                       <td className="num muted">{grp(item.stock)}</td>
-                      {can("manager") && (
+                      {can("edit_catalog") && (
                         <td>
                           <button className="btn small ghost" onClick={() => setEditing(item)}>Ubah</button>
                         </td>

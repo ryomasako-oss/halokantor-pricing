@@ -7,7 +7,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import type { NextFunction, Request, Response } from "express";
 import { get } from "./db.js";
-import type { Role, User } from "../shared/types.js";
+import { hasPermission, type Permission } from "../shared/permissions.js";
+import type { User } from "../shared/types.js";
 
 const COOKIE = "hk_session";
 const TOKEN_TTL = "12h";
@@ -72,21 +73,17 @@ export function requireAuth(req: AuthedRequest, res: Response, next: NextFunctio
   next();
 }
 
-const RANK: Record<Role, number> = { rep: 1, manager: 2, admin: 3 };
-
-/** Gate a route at a minimum role. Admin outranks manager outranks rep. */
-export function requireRole(min: Role) {
+/** Gate a route behind a named permission (see shared/permissions.ts). */
+export function requirePermission(permission: Permission) {
   return (req: AuthedRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({ error: "Silakan masuk terlebih dahulu." });
       return;
     }
-    if (RANK[req.user.role] < RANK[min]) {
+    if (!hasPermission(req.user.role, permission)) {
       res.status(403).json({ error: "Akses ditolak untuk peran Anda." });
       return;
     }
     next();
   };
 }
-
-export const atLeast = (role: Role, min: Role): boolean => RANK[role] >= RANK[min];

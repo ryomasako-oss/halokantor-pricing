@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { all, get, run, tx } from "../db.js";
 import { audit } from "../audit.js";
-import { type AuthedRequest, requireAuth, requireRole } from "../auth.js";
+import { type AuthedRequest, requireAuth, requirePermission } from "../auth.js";
 import { catalogRowSchema, zodMessage } from "../validate.js";
 import type { CatalogItem } from "../../shared/types.js";
 
@@ -61,7 +61,7 @@ catalogRouter.get("/stats", (_req, res) => {
  * posts plain rows, so the server never handles uploaded binaries.
  * Zero-valued fields never overwrite an existing non-zero value.
  */
-catalogRouter.post("/import", requireRole("manager"), (req: AuthedRequest, res) => {
+catalogRouter.post("/import", requirePermission("import_catalog"), (req: AuthedRequest, res) => {
   const parsed = z
     .object({
       rows: z.array(catalogRowSchema).min(1).max(20000),
@@ -122,7 +122,7 @@ catalogRouter.post("/import", requireRole("manager"), (req: AuthedRequest, res) 
   res.json({ ...result, total: rows.length });
 });
 
-catalogRouter.put("/:id", requireRole("manager"), (req: AuthedRequest, res) => {
+catalogRouter.put("/:id", requirePermission("edit_catalog"), (req: AuthedRequest, res) => {
   const id = Number(req.params.id);
   const parsed = z
     .object({
@@ -147,7 +147,7 @@ catalogRouter.put("/:id", requireRole("manager"), (req: AuthedRequest, res) => {
   res.json({ item: get<CatalogItem>("SELECT * FROM catalog_items WHERE id = ?", id) });
 });
 
-catalogRouter.delete("/", requireRole("admin"), (req: AuthedRequest, res) => {
+catalogRouter.delete("/", requirePermission("delete_catalog"), (req: AuthedRequest, res) => {
   const info = run("DELETE FROM catalog_items");
   audit(req.user!.id, "catalog", 0, "cleared", { removed: info.changes });
   res.json({ ok: true, removed: info.changes });

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { all, get, run, stmt, batch } from "../../db.d1";
 import { audit } from "../audit";
-import { requireAuth, requireRole } from "../auth";
+import { requireAuth, requirePermission } from "../auth";
 import { catalogRowSchema, zodMessage } from "../../validate";
 import type { CatalogItem } from "../../../shared/types";
 import type { Env } from "../env";
@@ -79,7 +79,7 @@ function chunks<T>(arr: T[], size: number): T[][] {
  * report accurate inserted/updated counts, existing codes are read
  * once up front (not interleaved with the writes).
  */
-catalogRouter.post("/import", requireRole("manager"), async (c) => {
+catalogRouter.post("/import", requirePermission("import_catalog"), async (c) => {
   const user = c.get("user")!;
   const parsed = z
     .object({
@@ -151,7 +151,7 @@ catalogRouter.post("/import", requireRole("manager"), async (c) => {
   return c.json({ ...result, total: rows.length });
 });
 
-catalogRouter.put("/:id", requireRole("manager"), async (c) => {
+catalogRouter.put("/:id", requirePermission("edit_catalog"), async (c) => {
   const user = c.get("user")!;
   const id = Number(c.req.param("id"));
   const parsed = z
@@ -176,7 +176,7 @@ catalogRouter.put("/:id", requireRole("manager"), async (c) => {
   return c.json({ item });
 });
 
-catalogRouter.delete("/", requireRole("admin"), async (c) => {
+catalogRouter.delete("/", requirePermission("delete_catalog"), async (c) => {
   const user = c.get("user")!;
   const info = await run(c.env.DB, "DELETE FROM catalog_items");
   await audit(c.env.DB, user.id, "catalog", 0, "cleared", { removed: info.meta.changes });

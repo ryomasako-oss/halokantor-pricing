@@ -18,7 +18,7 @@ export function SettingsPage() {
   const [password, setPassword] = useState({ current: "", next: "", confirm: "" });
 
   const loadUsers = useCallback(() => {
-    if (!can("admin")) return;
+    if (!can("manage_users")) return;
     api.get<{ users: User[] }>("/auth/users").then((r) => setUsers(r.users)).catch(() => undefined);
   }, [can]);
 
@@ -81,14 +81,14 @@ export function SettingsPage() {
           <section className="card">
             <div className="card-head">
               <h2>Kebijakan harga</h2>
-              {!can("admin") && <span className="badge grey">Hanya admin yang bisa mengubah</span>}
+              {!can("manage_policy") && <span className="badge grey">Hanya admin yang bisa mengubah</span>}
             </div>
             <div className="card-body">
               <div className="field-grid">
                 <label className="field">
                   <span>Net margin minimum ({pct(policy.minNetMargin)})</span>
                   <input
-                    className="input" type="number" min="0" max="90" step="0.5" disabled={!can("admin")}
+                    className="input" type="number" min="0" max="90" step="0.5" disabled={!can("manage_policy")}
                     value={+(policy.minNetMargin * 100).toFixed(2)}
                     onChange={(e) => setPolicy({ ...policy, minNetMargin: Number(e.target.value) / 100 })}
                   />
@@ -96,7 +96,7 @@ export function SettingsPage() {
                 <label className="field">
                   <span>Margin minimum per item ({pct(policy.minLineMargin)})</span>
                   <input
-                    className="input" type="number" min="-50" max="90" step="0.5" disabled={!can("admin")}
+                    className="input" type="number" min="-50" max="90" step="0.5" disabled={!can("manage_policy")}
                     value={+(policy.minLineMargin * 100).toFixed(2)}
                     onChange={(e) => setPolicy({ ...policy, minLineMargin: Number(e.target.value) / 100 })}
                   />
@@ -104,7 +104,7 @@ export function SettingsPage() {
                 <label className="field">
                   <span>Diskon basket maksimum ({pct(policy.maxBasketDiscount)})</span>
                   <input
-                    className="input" type="number" min="0" max="100" step="1" disabled={!can("admin")}
+                    className="input" type="number" min="0" max="100" step="1" disabled={!can("manage_policy")}
                     value={+(policy.maxBasketDiscount * 100).toFixed(2)}
                     onChange={(e) => setPolicy({ ...policy, maxBasketDiscount: Number(e.target.value) / 100 })}
                   />
@@ -112,7 +112,7 @@ export function SettingsPage() {
                 <label className="field">
                   <span>Ambang nilai wajib persetujuan</span>
                   <input
-                    className="input" type="number" min="0" step="1000000" disabled={!can("admin")}
+                    className="input" type="number" min="0" step="1000000" disabled={!can("manage_policy")}
                     value={policy.approvalValueThreshold}
                     onChange={(e) =>
                       setPolicy({ ...policy, approvalValueThreshold: Number(e.target.value) })
@@ -124,13 +124,13 @@ export function SettingsPage() {
               <label className="toggle" style={{ marginTop: 14 }}>
                 <input
                   type="checkbox"
-                  disabled={!can("admin")}
+                  disabled={!can("manage_policy")}
                   checked={policy.allowBelowCost}
                   onChange={(e) => setPolicy({ ...policy, allowBelowCost: e.target.checked })}
                 />
                 <span>Izinkan item dijual di bawah landed cost</span>
               </label>
-              {can("admin") && (
+              {can("manage_policy") && (
                 <div className="row" style={{ marginTop: 16, justifyContent: "flex-end" }}>
                   <button className="btn primary" onClick={savePolicy}>Simpan kebijakan</button>
                 </div>
@@ -156,7 +156,7 @@ export function SettingsPage() {
                     <span>{label}</span>
                     <input
                       className="input"
-                      disabled={!can("admin")}
+                      disabled={!can("manage_company")}
                       value={company[key]}
                       onChange={(e) => setCompany({ ...company, [key]: e.target.value })}
                     />
@@ -166,7 +166,7 @@ export function SettingsPage() {
               <label className="field" style={{ marginTop: 12 }}>
                 <span>Alamat</span>
                 <textarea
-                  className="textarea" rows={2} disabled={!can("admin")}
+                  className="textarea" rows={2} disabled={!can("manage_company")}
                   value={company.address}
                   onChange={(e) => setCompany({ ...company, address: e.target.value })}
                 />
@@ -174,12 +174,12 @@ export function SettingsPage() {
               <label className="field" style={{ marginTop: 12 }}>
                 <span>Rekening pembayaran</span>
                 <input
-                  className="input" disabled={!can("admin")}
+                  className="input" disabled={!can("manage_company")}
                   value={company.bank}
                   onChange={(e) => setCompany({ ...company, bank: e.target.value })}
                 />
               </label>
-              {can("admin") && (
+              {can("manage_company") && (
                 <div className="row" style={{ marginTop: 16, justifyContent: "flex-end" }}>
                   <button className="btn primary" onClick={saveCompany}>Simpan identitas</button>
                 </div>
@@ -229,7 +229,7 @@ export function SettingsPage() {
           </div>
         </section>
 
-        {can("admin") && (
+        {can("manage_users") && (
           <section className="card">
             <div className="card-head">
               <h2>Pengguna</h2>

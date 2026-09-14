@@ -298,7 +298,7 @@ export function QuoteEditorPage() {
           </button>
           <WorkflowButtons
             quote={quote}
-            canManage={can("manager")}
+            canManage={can("decide_quotes")}
             isOwner={quote.created_by === user?.id}
             blocked={blocked.length}
             onSubmit={() => setModal({ kind: "submit" })}
@@ -702,7 +702,7 @@ export function QuoteEditorPage() {
           <p className="muted small" style={{ marginTop: 12 }}>
             {blocked.length
               ? "Karena ada pelanggaran kebijakan, quotation ini wajib disetujui manajer sebelum bisa dikirim."
-              : can("manager")
+              : can("decide_quotes")
                 ? "Semua angka di dalam kebijakan, jadi quotation langsung disetujui atas nama Anda."
                 : "Semua angka di dalam kebijakan. Quotation tetap masuk antrean manajer untuk dicek."}
           </p>

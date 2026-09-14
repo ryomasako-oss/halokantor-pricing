@@ -11,6 +11,7 @@ import { CatalogPage } from "./pages/Catalog";
 import { ClientsPage } from "./pages/Clients";
 import { SettingsPage } from "./pages/Settings";
 import type { Approval } from "@shared/types";
+import type { Permission } from "@shared/permissions";
 
 function TopBar() {
   const { user, logout, can } = useAuth();
@@ -19,7 +20,7 @@ function TopBar() {
 
   // Keep the approvals badge fresh as the user moves around the app.
   useEffect(() => {
-    if (!can("manager")) return;
+    if (!can("decide_quotes")) return;
     api
       .get<{ approvals: Approval[] }>("/approvals?decision=pending")
       .then((r) => setPending(r.approvals.length))
@@ -41,7 +42,7 @@ function TopBar() {
           <Icon name="quote" size={16} />
           <span className="label">Quotation</span>
         </NavLink>
-        {can("manager") && (
+        {can("decide_quotes") && (
           <NavLink to="/approvals" className={({ isActive }) => (isActive ? "active" : "")}>
             <Icon name="shield" size={16} />
             <span className="label">Persetujuan</span>
@@ -77,15 +78,15 @@ function TopBar() {
   );
 }
 
-function RequireRole({ min, children }: { min: "manager" | "admin"; children: React.ReactNode }) {
+function RequirePermission({ permission, children }: { permission: Permission; children: React.ReactNode }) {
   const { can } = useAuth();
-  if (!can(min)) {
+  if (!can(permission)) {
     return (
       <div className="hk-main">
         <div className="card">
           <div className="card-body empty">
             <Icon name="shield" size={28} />
-            <h3>Halaman ini khusus {min === "admin" ? "admin" : "manajer"}</h3>
+            <h3>Halaman ini khusus manajer dan admin</h3>
             <p>Akun Anda tidak punya akses ke bagian ini.</p>
           </div>
         </div>
@@ -121,9 +122,9 @@ export function App() {
         <Route
           path="/approvals"
           element={
-            <RequireRole min="manager">
+            <RequirePermission permission="decide_quotes">
               <ApprovalsPage />
-            </RequireRole>
+            </RequirePermission>
           }
         />
         <Route path="/catalog" element={<CatalogPage />} />

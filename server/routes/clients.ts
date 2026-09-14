@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { all, get, run } from "../db.js";
 import { audit } from "../audit.js";
-import { type AuthedRequest, requireAuth, requireRole } from "../auth.js";
+import { type AuthedRequest, requireAuth, requirePermission } from "../auth.js";
 import { clientSchema, zodMessage } from "../validate.js";
 import type { Client } from "../../shared/types.js";
 
@@ -58,7 +58,7 @@ clientsRouter.put("/:id", (req: AuthedRequest, res) => {
   res.json({ client: get<Client>("SELECT * FROM clients WHERE id = ?", id) });
 });
 
-clientsRouter.delete("/:id", requireRole("manager"), (req: AuthedRequest, res) => {
+clientsRouter.delete("/:id", requirePermission("delete_clients"), (req: AuthedRequest, res) => {
   const id = Number(req.params.id);
   const used = get<{ n: number }>(
     "SELECT COUNT(*) AS n FROM quotes WHERE client_id = ?",

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { all } from "../db.js";
 import { auditRecent } from "../audit.js";
-import { requireAuth, requireRole } from "../auth.js";
+import { requireAuth, requirePermission } from "../auth.js";
 
 export const approvalsRouter = Router();
 approvalsRouter.use(requireAuth);
@@ -26,6 +26,6 @@ approvalsRouter.get("/", (req, res) => {
   res.json({ approvals: rows });
 });
 
-approvalsRouter.get("/audit", requireRole("manager"), (_req, res) => {
+approvalsRouter.get("/audit", requirePermission("view_audit"), (_req, res) => {
   res.json({ audit: auditRecent(200) });
 });

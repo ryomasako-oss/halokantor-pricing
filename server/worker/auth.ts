@@ -24,7 +24,8 @@ import { SignJWT, jwtVerify } from "jose";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import type { Context, Next } from "hono";
 import { get, run } from "../db.d1";
-import type { Role, User } from "../../shared/types";
+import { hasPermission, type Permission } from "../../shared/permissions";
+import type { User } from "../../shared/types";
 import type { Env } from "./env";
 
 const COOKIE = "hk_session";
@@ -146,16 +147,12 @@ export async function requireAuth(c: Context<Env>, next: Next): Promise<Response
   await next();
 }
 
-const RANK: Record<Role, number> = { rep: 1, manager: 2, admin: 3 };
-
-export const atLeast = (role: Role, min: Role): boolean => RANK[role] >= RANK[min];
-
-/** Gate a route at a minimum role. Admin outranks manager outranks rep. */
-export function requireRole(min: Role) {
+/** Gate a route behind a named permission (see shared/permissions.ts). */
+export function requirePermission(permission: Permission) {
   return async (c: Context<Env>, next: Next): Promise<Response | void> => {
     const user = c.get("user");
     if (!user) return c.json({ error: "Silakan masuk terlebih dahulu." }, 401);
-    if (RANK[user.role] < RANK[min]) return c.json({ error: "Akses ditolak untuk peran Anda." }, 403);
+    if (!hasPermission(user.role, permission)) return c.json({ error: "Akses ditolak untuk peran Anda." }, 403);
     await next();
   };
 }

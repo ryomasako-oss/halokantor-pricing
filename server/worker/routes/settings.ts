@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { getSetting, setSetting } from "../../db.d1";
 import { audit } from "../audit";
-import { requireAuth, requireRole } from "../auth";
+import { requireAuth, requirePermission } from "../auth";
 import { companySchema, policySchema, zodMessage } from "../../validate";
 import { DEFAULT_POLICY } from "../../../shared/policy";
 import type { Env } from "../env";
@@ -26,7 +26,7 @@ settingsRouter.get("/", async (c) => {
   return c.json({ policy, company });
 });
 
-settingsRouter.put("/policy", requireRole("admin"), async (c) => {
+settingsRouter.put("/policy", requirePermission("manage_policy"), async (c) => {
   const user = c.get("user")!;
   const parsed = policySchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: zodMessage(parsed.error) }, 400);
@@ -35,7 +35,7 @@ settingsRouter.put("/policy", requireRole("admin"), async (c) => {
   return c.json({ policy: parsed.data });
 });
 
-settingsRouter.put("/company", requireRole("admin"), async (c) => {
+settingsRouter.put("/company", requirePermission("manage_company"), async (c) => {
   const user = c.get("user")!;
   const parsed = companySchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: zodMessage(parsed.error) }, 400);

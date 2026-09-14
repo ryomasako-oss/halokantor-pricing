@@ -2,7 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { all, get, run, tx } from "../db.js";
 import { audit, auditFor } from "../audit.js";
-import { type AuthedRequest, atLeast, requireAuth, requireRole } from "../auth.js";
+import { type AuthedRequest, requireAuth, requirePermission } from "../auth.js";
+import { hasPermission } from "../../shared/permissions.js";
 import { snapshotSchema, zodMessage } from "../validate.js";
 import {
   EDITABLE_STATUSES,
@@ -23,7 +24,7 @@ quotesRouter.use(requireAuth);
 
 /** Reps may only change their own quotes; managers and admins may change any. */
 function canEdit(req: AuthedRequest, createdBy: number): boolean {
-  return req.user!.id === createdBy || atLeast(req.user!.role, "manager");
+  return req.user!.id === createdBy || hasPermission(req.user!.role, "edit_all_quotes");
 }
 
 quotesRouter.get("/", (req: AuthedRequest, res) => {
@@ -266,7 +267,7 @@ quotesRouter.post("/:id/submit", (req: AuthedRequest, res) => {
   const { breaches, monthly_value, net_margin } = breachesFor(quote);
   const clean = isWithinPolicy(breaches);
   // A manager submitting a quote that breaks no rule is approved on the spot.
-  const autoApprove = clean && atLeast(req.user!.role, "manager");
+  const autoApprove = clean && hasPermission(req.user!.role, "decide_quotes");
 
   tx(() => {
     run(
@@ -302,7 +303,7 @@ quotesRouter.post("/:id/submit", (req: AuthedRequest, res) => {
   res.json({ quote: findQuote(id), breaches, autoApproved: autoApprove });
 });
 
-quotesRouter.post("/:id/decide", requireRole("manager"), (req: AuthedRequest, res) => {
+quotesRouter.post("/:id/decide", requirePermission("decide_quotes"), (req: AuthedRequest, res) => {
   const id = Number(req.params.id);
   const quote = findQuote(id);
   if (!quote) {
@@ -429,7 +430,7 @@ quotesRouter.delete("/:id", (req: AuthedRequest, res) => {
     return;
   }
   const isOwnDraft = quote.created_by === req.user!.id && quote.status === "draft";
-  if (!isOwnDraft && !atLeast(req.user!.role, "admin")) {
+  if (!isOwnDraft && !hasPermission(req.user!.role, "delete_quotes")) {
     res.status(403).json({
       error: "Hanya draft milik sendiri yang bisa dihapus. Selain itu perlu admin.",
     });

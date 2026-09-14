@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getSetting, setSetting } from "../db.js";
 import { audit } from "../audit.js";
-import { type AuthedRequest, requireAuth, requireRole } from "../auth.js";
+import { type AuthedRequest, requireAuth, requirePermission } from "../auth.js";
 import { companySchema, policySchema, zodMessage } from "../validate.js";
 import { DEFAULT_POLICY } from "../../shared/policy.js";
 
@@ -26,7 +26,7 @@ settingsRouter.get("/", (_req, res) => {
   });
 });
 
-settingsRouter.put("/policy", requireRole("admin"), (req: AuthedRequest, res) => {
+settingsRouter.put("/policy", requirePermission("manage_policy"), (req: AuthedRequest, res) => {
   const parsed = policySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: zodMessage(parsed.error) });
@@ -37,7 +37,7 @@ settingsRouter.put("/policy", requireRole("admin"), (req: AuthedRequest, res) =>
   res.json({ policy: parsed.data });
 });
 
-settingsRouter.put("/company", requireRole("admin"), (req: AuthedRequest, res) => {
+settingsRouter.put("/company", requirePermission("manage_company"), (req: AuthedRequest, res) => {
   const parsed = companySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: zodMessage(parsed.error) });

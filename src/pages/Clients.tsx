@@ -98,7 +98,7 @@ export function ClientsPage() {
                         <button className="btn small ghost" onClick={() => setEditing({ ...c })}>
                           Ubah
                         </button>
-                        {can("manager") && (
+                        {can("delete_clients") && (
                           <button className="icon-btn" onClick={() => setDeleting(c)} aria-label={`Hapus ${c.name}`}>
                             <Icon name="trash" size={15} />
                           </button>

@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { all, get, run } from "../../db.d1";
 import { audit } from "../audit";
-import { clearSession, hashPassword, issueSession, requireAuth, requireRole, verifyPassword } from "../auth";
+import { clearSession, hashPassword, issueSession, requireAuth, requirePermission, verifyPassword } from "../auth";
+import { hasPermission, rolesWith } from "../../../shared/permissions";
 import type { User } from "../../../shared/types";
 import { clientIp, type Env } from "../env";
 
@@ -79,7 +80,7 @@ authRouter.post("/password", requireAuth, async (c) => {
 
 /* ---------------- user administration ---------------- */
 
-authRouter.get("/users", requireRole("admin"), async (c) => {
+authRouter.get("/users", requirePermission("manage_users"), async (c) => {
   const users = await all<User>(
     c.env.DB,
     "SELECT id, email, name, role, active, created_at FROM users ORDER BY name",
@@ -87,7 +88,7 @@ authRouter.get("/users", requireRole("admin"), async (c) => {
   return c.json({ users });
 });
 
-authRouter.post("/users", requireRole("admin"), async (c) => {
+authRouter.post("/users", requirePermission("manage_users"), async (c) => {
   const actor = c.get("user")!;
   const parsed = z
     .object({
@@ -117,7 +118,7 @@ authRouter.post("/users", requireRole("admin"), async (c) => {
   return c.json({ user }, 201);
 });
 
-authRouter.patch("/users/:id", requireRole("admin"), async (c) => {
+authRouter.patch("/users/:id", requirePermission("manage_users"), async (c) => {
   const actor = c.get("user")!;
   const id = Number(c.req.param("id"));
   const parsed = z
@@ -136,6 +137,24 @@ authRouter.patch("/users/:id", requireRole("admin"), async (c) => {
   // Guard against an admin locking themselves, and possibly everyone, out.
   if (id === actor.id && (parsed.data.active === false || parsed.data.role === "rep")) {
     return c.json({ error: "Anda tidak bisa menurunkan atau menonaktifkan akun sendiri." }, 400);
+  }
+  // Guard against removing the last user who can manage users, even by someone else.
+  const losesManageUsers =
+    hasPermission(target.role, "manage_users") &&
+    (parsed.data.active === false ||
+      (parsed.data.role !== undefined && !hasPermission(parsed.data.role, "manage_users")));
+  if (losesManageUsers) {
+    const roles = rolesWith("manage_users");
+    const placeholders = roles.map(() => "?").join(",");
+    const remaining = await get<{ n: number }>(
+      c.env.DB,
+      `SELECT COUNT(*) AS n FROM users WHERE role IN (${placeholders}) AND active = 1 AND id != ?`,
+      ...roles,
+      id,
+    );
+    if (!remaining || remaining.n < 1) {
+      return c.json({ error: "Tidak bisa menghapus admin terakhir yang bisa mengelola pengguna." }, 400);
+    }
   }
   const d = parsed.data;
   if (d.name !== undefined) await run(c.env.DB, "UPDATE users SET name = ? WHERE id = ?", d.name, id);

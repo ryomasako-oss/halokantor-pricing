@@ -9,9 +9,10 @@ import {
   hashPassword,
   issueSession,
   requireAuth,
-  requireRole,
+  requirePermission,
   verifyPassword,
 } from "../auth.js";
+import { hasPermission, rolesWith } from "../../shared/permissions.js";
 import type { User } from "../../shared/types.js";
 
 export const authRouter = Router();
@@ -87,7 +88,7 @@ authRouter.post("/password", requireAuth, (req: AuthedRequest, res) => {
 
 /* ---------------- user administration ---------------- */
 
-authRouter.get("/users", requireRole("admin"), (_req, res) => {
+authRouter.get("/users", requirePermission("manage_users"), (_req, res) => {
   res.json({
     users: all<User>(
       "SELECT id, email, name, role, active, created_at FROM users ORDER BY name",
@@ -95,7 +96,7 @@ authRouter.get("/users", requireRole("admin"), (_req, res) => {
   });
 });
 
-authRouter.post("/users", requireRole("admin"), (req: AuthedRequest, res) => {
+authRouter.post("/users", requirePermission("manage_users"), (req: AuthedRequest, res) => {
   const parsed = z
     .object({
       email: z.string().email(),
@@ -127,7 +128,7 @@ authRouter.post("/users", requireRole("admin"), (req: AuthedRequest, res) => {
   });
 });
 
-authRouter.patch("/users/:id", requireRole("admin"), (req: AuthedRequest, res) => {
+authRouter.patch("/users/:id", requirePermission("manage_users"), (req: AuthedRequest, res) => {
   const id = Number(req.params.id);
   const parsed = z
     .object({
@@ -150,6 +151,24 @@ authRouter.patch("/users/:id", requireRole("admin"), (req: AuthedRequest, res) =
   if (id === req.user!.id && (parsed.data.active === false || parsed.data.role === "rep")) {
     res.status(400).json({ error: "Anda tidak bisa menurunkan atau menonaktifkan akun sendiri." });
     return;
+  }
+  // Guard against removing the last user who can manage users, even by someone else.
+  const losesManageUsers =
+    hasPermission(target.role, "manage_users") &&
+    (parsed.data.active === false ||
+      (parsed.data.role !== undefined && !hasPermission(parsed.data.role, "manage_users")));
+  if (losesManageUsers) {
+    const roles = rolesWith("manage_users");
+    const placeholders = roles.map(() => "?").join(",");
+    const remaining = get<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM users WHERE role IN (${placeholders}) AND active = 1 AND id != ?`,
+      ...roles,
+      id,
+    );
+    if (!remaining || remaining.n < 1) {
+      res.status(400).json({ error: "Tidak bisa menghapus admin terakhir yang bisa mengelola pengguna." });
+      return;
+    }
   }
   const d = parsed.data;
   if (d.name !== undefined) run("UPDATE users SET name = ? WHERE id = ?", d.name, id);

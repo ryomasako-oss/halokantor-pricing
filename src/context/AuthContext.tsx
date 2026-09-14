@@ -1,16 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import type { Role, User } from "@shared/types";
+import { hasPermission, type Permission } from "@shared/permissions";
+import type { User } from "@shared/types";
 
 interface AuthValue {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  can: (min: Role) => boolean;
+  can: (permission: Permission) => boolean;
 }
 
-const RANK: Record<Role, number> = { rep: 1, manager: 2, admin: 3 };
 const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -36,7 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const can = useCallback(
-    (min: Role) => Boolean(user && RANK[user.role] >= RANK[min]),
+    (permission: Permission) => Boolean(user && hasPermission(user.role, permission)),
     [user],
   );
 
