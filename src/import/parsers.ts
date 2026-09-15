@@ -323,8 +323,9 @@ export async function parseFullCatalog(file: File): Promise<{ rows: CatalogRow[]
       name,
       uom: col.uom >= 0 ? text(row[col.uom]) || "Pcs" : "Pcs",
       category: col.category >= 0 ? text(row[col.category]) : "",
-      cogs: col.cogs >= 0 ? Math.max(0, Math.round(toNum(row[col.cogs]))) : 0,
-      list_price: col.listPrice >= 0 ? Math.max(0, Math.round(toNum(row[col.listPrice]))) : 0,
+      cogs: col.cogs >= 0 && toNum(row[col.cogs]) > 0 ? Math.round(toNum(row[col.cogs])) : 0,
+      list_price:
+        col.listPrice >= 0 && toNum(row[col.listPrice]) > 0 ? Math.round(toNum(row[col.listPrice])) : 0,
       stock: col.stock >= 0 && Number.isFinite(toNum(row[col.stock])) ? toNum(row[col.stock]) : 0,
     });
   }
