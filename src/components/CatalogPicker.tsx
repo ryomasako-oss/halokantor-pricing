@@ -22,6 +22,10 @@ export function CatalogPicker({
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [chosen, setChosen] = useState<Record<number, number>>({});
+  // Items stay picked across searches, but a later search replaces `items` and
+  // drops earlier matches from it. Cache the full row here so add() doesn't
+  // need the item to still be in the current search results.
+  const [pickedItems, setPickedItems] = useState<Record<number, CatalogItem>>({});
   const [onlyPriced, setOnlyPriced] = useState(true);
 
   const search = useCallback(() => {
@@ -50,7 +54,7 @@ export function CatalogPicker({
   const add = () => {
     const picked = selected
       .map(([id, qty]) => {
-        const item = items.find((x) => x.id === Number(id));
+        const item = pickedItems[Number(id)];
         if (!item) return null;
         return {
           id: `cat-${item.id}-${Math.random().toString(36).slice(2, 7)}`,
@@ -148,9 +152,10 @@ export function CatalogPicker({
                       min="0"
                       placeholder="0"
                       value={chosen[item.id] ?? ""}
-                      onChange={(e) =>
-                        setChosen((c) => ({ ...c, [item.id]: Math.max(0, Number(e.target.value)) }))
-                      }
+                      onChange={(e) => {
+                        setChosen((c) => ({ ...c, [item.id]: Math.max(0, Number(e.target.value)) }));
+                        setPickedItems((p) => ({ ...p, [item.id]: item }));
+                      }}
                       aria-label={`Qty untuk ${item.name}`}
                     />
                   </td>
