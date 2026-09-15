@@ -1,6 +1,12 @@
 import { useEffect, useRef } from "react";
 import { Icon } from "./Icon";
 
+function useLatest<T>(value: T) {
+  const ref = useRef(value);
+  ref.current = value;
+  return ref;
+}
+
 interface Props {
   title: string;
   sub?: string;
@@ -12,10 +18,11 @@ interface Props {
 
 export function Modal({ title, sub, onClose, children, footer, size = "normal" }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  const onCloseRef = useLatest(onClose);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     window.addEventListener("keydown", onKey);
     // Move focus into the dialog so keyboard users are not left behind it.
@@ -26,7 +33,8 @@ export function Modal({ title, sub, onClose, children, footer, size = "normal" }
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = overflow;
     };
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div
