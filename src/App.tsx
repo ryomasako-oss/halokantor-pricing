@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./context/AuthContext";
+import { useConfirmLeave } from "./context/UnsavedGuardContext";
 import { Icon } from "./components/Icon";
 import { LoginPage } from "./pages/Login";
 import { DashboardPage } from "./pages/Dashboard";
@@ -17,6 +18,11 @@ function TopBar() {
   const { user, logout, can } = useAuth();
   const location = useLocation();
   const [pending, setPending] = useState(0);
+  const confirmLeave = useConfirmLeave();
+
+  const guardedClick = (e: React.MouseEvent) => {
+    if (!confirmLeave()) e.preventDefault();
+  };
 
   // Keep the approvals badge fresh as the user moves around the app.
   useEffect(() => {
@@ -29,7 +35,7 @@ function TopBar() {
 
   return (
     <header className="hk-top">
-      <NavLink to="/" className="hk-brand">
+      <NavLink to="/" className="hk-brand" onClick={guardedClick}>
         <span className="hk-logo" aria-hidden="true">h</span>
         <span>
           <span className="hk-title" style={{ display: "block" }}>Halokantor Pricing</span>
@@ -38,26 +44,26 @@ function TopBar() {
       </NavLink>
 
       <nav className="hk-nav" aria-label="Navigasi utama">
-        <NavLink to="/quotes" className={({ isActive }) => (isActive ? "active" : "")}>
+        <NavLink to="/quotes" className={({ isActive }) => (isActive ? "active" : "")} onClick={guardedClick}>
           <Icon name="quote" size={16} />
           <span className="label">Quotation</span>
         </NavLink>
         {can("decide_quotes") && (
-          <NavLink to="/approvals" className={({ isActive }) => (isActive ? "active" : "")}>
+          <NavLink to="/approvals" className={({ isActive }) => (isActive ? "active" : "")} onClick={guardedClick}>
             <Icon name="shield" size={16} />
             <span className="label">Persetujuan</span>
             {pending > 0 && <span className="count">{pending}</span>}
           </NavLink>
         )}
-        <NavLink to="/catalog" className={({ isActive }) => (isActive ? "active" : "")}>
+        <NavLink to="/catalog" className={({ isActive }) => (isActive ? "active" : "")} onClick={guardedClick}>
           <Icon name="box" size={16} />
           <span className="label">Katalog</span>
         </NavLink>
-        <NavLink to="/clients" className={({ isActive }) => (isActive ? "active" : "")}>
+        <NavLink to="/clients" className={({ isActive }) => (isActive ? "active" : "")} onClick={guardedClick}>
           <Icon name="building" size={16} />
           <span className="label">Klien</span>
         </NavLink>
-        <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>
+        <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")} onClick={guardedClick}>
           <Icon name="gear" size={16} />
           <span className="label">Pengaturan</span>
         </NavLink>
@@ -70,7 +76,12 @@ function TopBar() {
             {user?.role === "admin" ? "Admin" : user?.role === "manager" ? "Manajer" : "Sales"}
           </span>
         </span>
-        <button className="icon-btn" onClick={() => void logout()} title="Keluar" aria-label="Keluar">
+        <button
+          className="icon-btn"
+          onClick={() => confirmLeave() && void logout()}
+          title="Keluar"
+          aria-label="Keluar"
+        >
           <Icon name="logout" size={17} />
         </button>
       </div>

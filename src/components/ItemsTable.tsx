@@ -22,6 +22,10 @@ interface Props {
 
 type SortKey = "lineNo" | "name" | "qty" | "cogs" | "rrp" | "margin" | "value";
 
+// Selects the whole value on focus so typing a new number replaces it
+// instead of appending after a leading 0.
+const selectOnFocus = (e: React.FocusEvent<HTMLInputElement>) => e.target.select();
+
 export function ItemsTable({
   engine,
   scenario,
@@ -185,6 +189,7 @@ export function ItemsTable({
                         value={r.qty}
                         disabled={readOnly}
                         onChange={(e) => onUpdate(r.id, { qty: Math.max(0, Number(e.target.value)) })}
+                        onFocus={selectOnFocus}
                         aria-label={`Qty ${r.name}`}
                       />
                     </td>
@@ -198,6 +203,7 @@ export function ItemsTable({
                         onChange={(e) =>
                           onUpdate(r.id, { cogs: Math.max(0, Number(e.target.value)), estCogs: false })
                         }
+                        onFocus={selectOnFocus}
                         aria-label={`COGS ${r.name}`}
                       />
                     </td>
@@ -209,6 +215,7 @@ export function ItemsTable({
                         value={r.rrp}
                         disabled={readOnly}
                         onChange={(e) => onUpdate(r.id, { rrp: Math.max(0, Number(e.target.value)) })}
+                        onFocus={selectOnFocus}
                         aria-label={`RRP ${r.name}`}
                       />
                     </td>
@@ -240,6 +247,7 @@ export function ItemsTable({
                               next[k] = v > 0 ? v : null;
                               onUpdate(r.id, { manualPrice: next });
                             }}
+                            onFocus={selectOnFocus}
                             aria-label={`Harga ${SCENARIOS[k].key} untuk ${r.name}`}
                           />
                         ) : (

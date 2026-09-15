@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useUnsavedGuard } from "../context/UnsavedGuardContext";
 import { computeEngine, SCENARIOS } from "@shared/engine";
 import { evaluatePolicy, isWithinPolicy } from "@shared/policy";
 import { fmtDateTime, pct, rp, uid } from "@shared/format";
@@ -142,6 +143,13 @@ export function QuoteEditorPage() {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty]);
+
+  // Same, but for in-app navigation (NavLink clicks), which beforeunload can't see.
+  useUnsavedGuard(
+    dirty
+      ? () => window.confirm("Ada perubahan yang belum disimpan. Tinggalkan halaman ini?")
+      : null,
+  );
 
   const update = useCallback((patch: Partial<QuoteSnapshot>) => {
     setSnapshot((s) => {
