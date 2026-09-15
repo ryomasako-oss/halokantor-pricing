@@ -238,6 +238,17 @@ export function QuoteEditorPage() {
       ),
     });
 
+  const addRegion = () =>
+    update({
+      regions: [
+        ...snapshot.regions,
+        { id: uid(), name: "Lokasi baru", share: 0, deliveries: 1, cost: 0 },
+      ],
+    });
+
+  const removeRegion = (index: number) =>
+    update({ regions: snapshot.regions.filter((_, i) => i !== index) });
+
   /* ---------------- workflow ---------------- */
 
   const act = async (fn: () => Promise<unknown>, message: string) => {
@@ -429,6 +440,8 @@ export function QuoteEditorPage() {
                     regions={engine.regions}
                     shareTotal={engine.shareTotal}
                     onChange={updateRegion}
+                    onAdd={addRegion}
+                    onRemove={removeRegion}
                     readOnly={readOnly}
                   />
                 </div>

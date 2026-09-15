@@ -246,11 +246,15 @@ export function DeliveryTable({
   regions,
   shareTotal,
   onChange,
+  onAdd,
+  onRemove,
   readOnly,
 }: {
   regions: ComputedRegion[];
   shareTotal: number;
   onChange: (index: number, field: string, value: string | number) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
   readOnly?: boolean;
 }) {
   return (
@@ -265,6 +269,7 @@ export function DeliveryTable({
               <th>Biaya/kirim</th>
               <th>Biaya/bln</th>
               <th>Modifier</th>
+              {!readOnly && <th aria-label="Aksi" />}
             </tr>
           </thead>
           <tbody>
@@ -317,11 +322,28 @@ export function DeliveryTable({
                 <td className="num">
                   <strong>{pct(r.modifier)}</strong>
                 </td>
+                {!readOnly && (
+                  <td>
+                    <button
+                      className="icon-btn"
+                      onClick={() => onRemove(i)}
+                      aria-label={`Hapus ${r.name}`}
+                      disabled={regions.length <= 1}
+                    >
+                      <Icon name="trash" size={15} />
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {!readOnly && (
+        <button className="btn small ghost" style={{ marginTop: 10 }} onClick={onAdd}>
+          <Icon name="plus" size={14} /> Tambah lokasi
+        </button>
+      )}
       {Math.abs(shareTotal - 1) > 0.0001 && (
         <p className="notice warn" style={{ marginTop: 10 }}>
           Total share order {pct(shareTotal, 0)}. Ubah sampai 100% supaya modifier akurat.
