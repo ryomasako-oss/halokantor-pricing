@@ -29,7 +29,7 @@ export function CatalogPage() {
   const [sortBy, setSortBy] = useState<"name" | "stock" | "cogs" | "list_price">("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState<null | "inventory" | "master" | "full">(null);
+  const [modal, setModal] = useState<null | "inventory" | "master" | "full" | "fullMerge">(null);
   const [editing, setEditing] = useState<EditingItem | null>(null);
   const PAGE = 50;
 
@@ -94,6 +94,9 @@ export function CatalogPage() {
             </button>
             <button className="btn" onClick={() => setModal("master")}>
               <Icon name="table" size={15} /> Impor daftar barang (harga jual)
+            </button>
+            <button className="btn" onClick={() => setModal("fullMerge")}>
+              <Icon name="table" size={15} /> Impor katalog lengkap (gabung)
             </button>
             {can("delete_catalog") && (
               <button
@@ -302,6 +305,30 @@ export function CatalogPage() {
             return {
               report,
               summary: `Katalog diganti. ${r.total} barang dari file, ${r.inserted} ditambahkan.`,
+            };
+          }}
+        />
+      )}
+
+      {modal === "fullMerge" && (
+        <ImportDialog
+          title="Impor katalog lengkap (gabung)"
+          description='Sama seperti template katalog lengkap (Kode Barang, Nama Barang, COGS, Harga Jual sekaligus), tapi digabung ke katalog yang ada — barang lama tidak dihapus. Kode yang sudah ada diperbarui, kode baru ditambahkan.'
+          onClose={() => {
+            setModal(null);
+            load();
+          }}
+          onFile={async (file) => {
+            const { parseFullCatalog } = await import("../import/parsers");
+            const { rows, report } = await parseFullCatalog(file);
+            const r = await api.post<{ inserted: number; updated: number; total: number }>("/catalog/import", {
+              rows,
+              source: file.name,
+              mode: "merge",
+            });
+            return {
+              report,
+              summary: `${r.total} barang dari file: ${r.inserted} ditambahkan, ${r.updated} diperbarui.`,
             };
           }}
         />
