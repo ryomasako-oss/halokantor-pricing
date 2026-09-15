@@ -16,6 +16,8 @@ interface Props {
   onRemove: (id: string) => void;
   onAdd: () => void;
   onOpenCatalog: () => void;
+  /** Pushes a row's COGS/RRP back into the shared catalog master. Omit to hide the action. */
+  onPushToCatalog?: (id: string) => void;
 }
 
 type SortKey = "lineNo" | "name" | "qty" | "cogs" | "rrp" | "margin" | "value";
@@ -28,6 +30,7 @@ export function ItemsTable({
   onRemove,
   onAdd,
   onOpenCatalog,
+  onPushToCatalog,
 }: Props) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "lineNo", dir: 1 });
@@ -252,14 +255,26 @@ export function ItemsTable({
                     <td className="num">{grp(r.qty * r.prices[scenario])}</td>
                     {!readOnly && (
                       <td>
-                        <button
-                          className="icon-btn"
-                          onClick={() => onRemove(r.id)}
-                          aria-label={`Hapus ${r.name}`}
-                          title="Hapus baris"
-                        >
-                          <Icon name="trash" size={15} />
-                        </button>
+                        <div className="row" style={{ justifyContent: "flex-end" }}>
+                          {onPushToCatalog && r.code && (
+                            <button
+                              className="icon-btn"
+                              onClick={() => onPushToCatalog(r.id)}
+                              aria-label={`Simpan COGS/RRP ${r.name} ke katalog`}
+                              title="Simpan COGS/RRP baris ini ke katalog master"
+                            >
+                              <Icon name="upload" size={15} />
+                            </button>
+                          )}
+                          <button
+                            className="icon-btn"
+                            onClick={() => onRemove(r.id)}
+                            aria-label={`Hapus ${r.name}`}
+                            title="Hapus baris"
+                          >
+                            <Icon name="trash" size={15} />
+                          </button>
+                        </div>
                       </td>
                     )}
                   </tr>

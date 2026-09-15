@@ -231,6 +231,35 @@ export function QuoteEditorPage() {
   const addItems = (items: QuoteItem[]) =>
     update({ items: renumber([...snapshot.items, ...items]) });
 
+  // Pushes one item's corrected COGS/RRP back into the shared catalog master
+  // (matched by code). Explicit and per-row, so a one-off deal price never
+  // silently becomes every other quote's reference price.
+  const pushToCatalog = async (itemId: string) => {
+    const item = snapshot.items.find((it) => it.id === itemId);
+    if (!item?.code.trim()) return;
+    try {
+      const r = await api.post<{ inserted: number; updated: number }>("/catalog/import", {
+        rows: [
+          {
+            code: item.code.trim(),
+            name: item.name,
+            uom: item.uom,
+            cogs: item.cogs,
+            list_price: item.rrp,
+          },
+        ],
+        source: `quote:${quote.number}`,
+        mode: "merge",
+      });
+      toast(
+        r.updated ? `Katalog "${item.name}" diperbarui.` : `"${item.name}" ditambahkan ke katalog.`,
+        "success",
+      );
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Gagal menyimpan ke katalog.", "error");
+    }
+  };
+
   const updateRegion = (index: number, field: string, value: string | number) =>
     update({
       regions: snapshot.regions.map((r, i) =>
@@ -253,6 +282,9 @@ export function QuoteEditorPage() {
 
   const act = async (fn: () => Promise<unknown>, message: string) => {
     try {
+      // load() below replaces the local snapshot with the server's copy -
+      // save first or any unsaved edit (e.g. manual COGS/RRP) is silently lost.
+      if (dirty) await save();
       await fn();
       await load();
       toast(message, "success");
@@ -283,7 +315,13 @@ export function QuoteEditorPage() {
     <main className="hk-main wide">
       <div className="hk-page-head">
         <div>
-          <button className="link-btn" onClick={() => navigate("/quotes")}>
+          <button
+            className="link-btn"
+            onClick={() => {
+              if (dirty && !window.confirm("Ada perubahan yang belum disimpan. Tinggalkan halaman ini?")) return;
+              navigate("/quotes");
+            }}
+          >
             <Icon name="back" size={14} /> Semua quotation
           </button>
           <h1 style={{ marginTop: 4 }}>{quote.title}</h1>
@@ -368,6 +406,7 @@ export function QuoteEditorPage() {
                   onRemove={removeItem}
                   onAdd={addBlank}
                   onOpenCatalog={() => setModal({ kind: "catalog" })}
+                  onPushToCatalog={can("edit_catalog") ? pushToCatalog : undefined}
                 />
               )}
 
@@ -632,6 +671,15 @@ export function QuoteEditorPage() {
           description="Excel atau CSV berisi nama item, qty, dan plafon harga. Kalau plafon ditulis per kota, yang dipakai harga terendah."
           onClose={() => setModal(null)}
           onFile={async (file) => {
+            if (
+              snapshot.items.length > 0 &&
+              !window.confirm(
+                `Ini akan mengganti semua ${snapshot.items.length} item yang sudah ada di quotation ini ` +
+                  "(termasuk COGS/RRP yang sudah kamu isi manual) dengan isi file yang baru. Lanjutkan?",
+              )
+            ) {
+              throw new Error("Impor dibatalkan.");
+            }
             // Loaded on demand: the spreadsheet parser is a large dependency.
             const { parseClientList } = await import("../import/parsers");
             const { items, report } = await parseClientList(file);
