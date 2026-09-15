@@ -15,6 +15,9 @@ interface Stats {
   updated: string | null;
 }
 
+const EMPTY_ITEM = { code: "", name: "", uom: "Pcs", cogs: 0, list_price: 0, category: "" };
+type EditingItem = typeof EMPTY_ITEM & { id?: number };
+
 export function CatalogPage() {
   const toast = useToast();
   const { can } = useAuth();
@@ -27,7 +30,7 @@ export function CatalogPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<null | "inventory" | "master" | "full">(null);
-  const [editing, setEditing] = useState<CatalogItem | null>(null);
+  const [editing, setEditing] = useState<EditingItem | null>(null);
   const PAGE = 50;
 
   const load = useCallback(() => {
@@ -75,6 +78,9 @@ export function CatalogPage() {
         </div>
         {can("import_catalog") && (
           <div className="row-wrap">
+            <button className="btn" onClick={() => setEditing({ ...EMPTY_ITEM })}>
+              <Icon name="plus" size={15} /> Tambah barang
+            </button>
             <button
               className="btn ghost"
               onClick={() => {
@@ -223,7 +229,7 @@ export function CatalogPage() {
                       <td className="num muted">{grp(item.stock)}</td>
                       {can("edit_catalog") && (
                         <td>
-                          <button className="btn small ghost" onClick={() => setEditing(item)}>Ubah</button>
+                          <button className="btn small ghost" onClick={() => setEditing({ ...item })}>Ubah</button>
                         </td>
                       )}
                     </tr>
@@ -327,26 +333,45 @@ export function CatalogPage() {
 
       {editing && (
         <Modal
-          title="Ubah data barang"
-          sub={editing.code}
+          title={editing.id ? "Ubah data barang" : "Tambah barang"}
+          sub={editing.id ? editing.code : undefined}
           onClose={() => setEditing(null)}
           footer={
             <>
               <button className="btn ghost" onClick={() => setEditing(null)}>Batal</button>
               <button
                 className="btn primary"
+                disabled={!editing.name.trim() || (!editing.id && !editing.code.trim())}
                 onClick={async () => {
                   try {
-                    await api.put(`/catalog/${editing.id}`, {
-                      name: editing.name,
-                      uom: editing.uom,
-                      cogs: Number(editing.cogs),
-                      list_price: Number(editing.list_price),
-                      category: editing.category,
-                    });
+                    if (editing.id) {
+                      await api.put(`/catalog/${editing.id}`, {
+                        name: editing.name,
+                        uom: editing.uom,
+                        cogs: Number(editing.cogs),
+                        list_price: Number(editing.list_price),
+                        category: editing.category,
+                      });
+                      toast("Barang diperbarui.", "success");
+                    } else {
+                      await api.post("/catalog/import", {
+                        rows: [
+                          {
+                            code: editing.code.trim(),
+                            name: editing.name,
+                            uom: editing.uom,
+                            cogs: Number(editing.cogs),
+                            list_price: Number(editing.list_price),
+                            category: editing.category,
+                          },
+                        ],
+                        source: "manual",
+                        mode: "merge",
+                      });
+                      toast("Barang ditambahkan.", "success");
+                    }
                     setEditing(null);
                     load();
-                    toast("Barang diperbarui.", "success");
                   } catch (e) {
                     toast(e instanceof Error ? e.message : "Gagal menyimpan.", "error");
                   }
@@ -358,6 +383,17 @@ export function CatalogPage() {
           }
         >
           <div className="col" style={{ gap: 12 }}>
+            {!editing.id && (
+              <label className="field">
+                <span>Kode barang</span>
+                <input
+                  className="input"
+                  value={editing.code}
+                  onChange={(e) => setEditing({ ...editing, code: e.target.value })}
+                  placeholder="Kode unik, misal ATK-0001"
+                />
+              </label>
+            )}
             <label className="field">
               <span>Nama barang</span>
               <input
