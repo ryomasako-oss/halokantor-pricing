@@ -42,6 +42,14 @@ quotesRouter.get("/", async (c) => {
     where.push("q.created_by = ?");
     params.push(user.id);
   }
+  const userIdParam = (c.req.query("user_id") ?? "").trim();
+  if (userIdParam) {
+    const uid = Number(userIdParam);
+    if (Number.isFinite(uid)) {
+      where.push("q.created_by = ?");
+      params.push(uid);
+    }
+  }
   const quotes = await listQuoteRows(c.env.DB, where.length ? `WHERE ${where.join(" AND ")}` : "", ...params);
   return c.json({
     quotes: quotes.map((q) => {

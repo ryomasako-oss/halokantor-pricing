@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -45,18 +45,29 @@ export function DashboardPage() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const userIdFilter = searchParams.get("user_id");
+  const userNameFilter = searchParams.get("user_name");
+
+  const clearUserFilter = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("user_id");
+    next.delete("user_name");
+    setSearchParams(next, { replace: true });
+  };
 
   const load = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams();
     if (filter !== "all") params.set("status", filter);
     if (mine) params.set("mine", "1");
+    if (userIdFilter) params.set("user_id", userIdFilter);
     api
       .get<{ quotes: QuoteRow[] }>(`/quotes?${params}`)
       .then((r) => setQuotes(r.quotes))
       .catch((e) => toast(e.message, "error"))
       .finally(() => setLoading(false));
-  }, [filter, mine, toast]);
+  }, [filter, mine, userIdFilter, toast]);
 
   useEffect(load, [load]);
   useEffect(() => {
@@ -136,6 +147,15 @@ export function DashboardPage() {
         </div>
       </div>
 
+      {userIdFilter && (
+        <div className="badge blue" style={{ marginBottom: 12, display: "inline-flex", alignItems: "center", gap: 8 }}>
+          Difilter ke pengguna: {userNameFilter || `#${userIdFilter}`}
+          <button className="icon-btn" onClick={clearUserFilter} aria-label="Hapus filter pengguna">
+            <Icon name="x" size={12} />
+          </button>
+        </div>
+      )}
+
       <div className="card">
         <div className="card-head">
           <div className="tabs">
@@ -147,7 +167,14 @@ export function DashboardPage() {
           </div>
           <div className="row-wrap">
             <label className="toggle">
-              <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={mine}
+                onChange={(e) => {
+                  setMine(e.target.checked);
+                  if (e.target.checked && userIdFilter) clearUserFilter();
+                }}
+              />
               <span className="small">Punya saya</span>
             </label>
             <input
