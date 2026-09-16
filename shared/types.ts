@@ -221,6 +221,7 @@ export interface Quote extends QuoteSnapshot {
   client_name?: string;
   status: QuoteStatus;
   rev_no: number;
+  version: number;
   created_by: number;
   created_by_name?: string;
   approved_by: number | null;

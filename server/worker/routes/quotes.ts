@@ -184,16 +184,18 @@ quotesRouter.put("/:id", async (c) => {
       title: z.string().min(1).max(200).optional(),
       client_id: z.number().int().nullable().optional(),
       snapshot: snapshotSchema,
+      expected_version: z.number().int(),
     })
     .safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: zodMessage(parsed.error) }, 400);
 
   const s = parsed.data.snapshot;
-  await run(
+  const result = await run(
     c.env.DB,
     `UPDATE quotes SET title = COALESCE(?, title), client_id = ?, scenario = ?,
-            assumptions = ?, items = ?, regions = ?, meta = ?, updated_at = datetime('now')
-      WHERE id = ?`,
+            assumptions = ?, items = ?, regions = ?, meta = ?,
+            version = version + 1, updated_at = datetime('now')
+      WHERE id = ? AND version = ?`,
     parsed.data.title ?? null,
     parsed.data.client_id === undefined ? existing.client_id : parsed.data.client_id,
     s.scenario,
@@ -202,7 +204,17 @@ quotesRouter.put("/:id", async (c) => {
     JSON.stringify(s.regions),
     JSON.stringify(s.meta),
     id,
+    parsed.data.expected_version,
   );
+  if (result.meta.changes === 0) {
+    return c.json(
+      {
+        error: "Quotation ini sudah diubah pengguna lain. Muat ulang untuk melihat versi terbaru.",
+        quote: await findQuote(c.env.DB, id),
+      },
+      409,
+    );
+  }
   return c.json({ quote: await findQuote(c.env.DB, id) });
 });
 
@@ -240,7 +252,7 @@ quotesRouter.post("/:id/restore/:revisionId", async (c) => {
   await run(
     c.env.DB,
     `UPDATE quotes SET scenario = ?, assumptions = ?, items = ?, regions = ?, meta = ?,
-            updated_at = datetime('now') WHERE id = ?`,
+            version = version + 1, updated_at = datetime('now') WHERE id = ?`,
     s.scenario ?? quote.scenario,
     JSON.stringify(s.assumptions),
     JSON.stringify(s.items),

@@ -112,45 +112,58 @@ quotesRouter.post("/", (req: AuthedRequest, res) => {
     ? get<Client>("SELECT * FROM clients WHERE id = ?", parsed.data.client_id)
     : undefined;
 
-  const number = nextQuoteNumber();
-  const snapshot: QuoteSnapshot = {
-    assumptions: parsed.data.snapshot?.assumptions ?? DEFAULT_ASSUMPTIONS,
-    items: parsed.data.snapshot?.items ?? [],
-    regions: parsed.data.snapshot?.regions ?? DEFAULT_REGIONS,
-    scenario: parsed.data.snapshot?.scenario ?? 1,
-    meta: parsed.data.snapshot?.meta ?? {
-      quoteNo: number,
-      date: new Date().toISOString().slice(0, 10),
-      validity: 30,
-      payment: client?.payment_terms || "30 hari setelah invoice",
-      delivery: client?.delivery_terms || "Franco Jakarta, jadwal mingguan",
-      notes: "",
-      preparedBy: req.user!.name,
-    },
-  };
+  // nextQuoteNumber() reads then this insert writes, not atomically — two
+  // concurrent requests can read the same number before either inserts.
+  // Retry with a fresh number if the UNIQUE constraint on quotes.number trips.
+  let number = nextQuoteNumber();
+  let id: number | undefined;
+  let snapshot: QuoteSnapshot | undefined;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    snapshot = {
+      assumptions: parsed.data.snapshot?.assumptions ?? DEFAULT_ASSUMPTIONS,
+      items: parsed.data.snapshot?.items ?? [],
+      regions: parsed.data.snapshot?.regions ?? DEFAULT_REGIONS,
+      scenario: parsed.data.snapshot?.scenario ?? 1,
+      meta: parsed.data.snapshot?.meta ?? {
+        quoteNo: number,
+        date: new Date().toISOString().slice(0, 10),
+        validity: 30,
+        payment: client?.payment_terms || "30 hari setelah invoice",
+        delivery: client?.delivery_terms || "Franco Jakarta, jadwal mingguan",
+        notes: "",
+        preparedBy: req.user!.name,
+      },
+    };
+    try {
+      id = tx(() => {
+        const info = run(
+          `INSERT INTO quotes(number, title, client_id, status, scenario, rev_no,
+                              assumptions, items, regions, meta, created_by)
+           VALUES(?, ?, ?, 'draft', ?, 1, ?, ?, ?, ?, ?)`,
+          number,
+          parsed.data.title,
+          parsed.data.client_id ?? null,
+          snapshot!.scenario,
+          JSON.stringify(snapshot!.assumptions),
+          JSON.stringify(snapshot!.items),
+          JSON.stringify(snapshot!.regions),
+          JSON.stringify(snapshot!.meta),
+          req.user!.id,
+        );
+        const newId = Number(info.lastInsertRowid);
+        saveRevision(newId, 1, snapshot!, req.user!.id, "Dibuat");
+        return newId;
+      });
+      break;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (attempt === 4 || !message.includes("UNIQUE constraint failed: quotes.number")) throw err;
+      number = nextQuoteNumber();
+    }
+  }
 
-  const id = tx(() => {
-    const info = run(
-      `INSERT INTO quotes(number, title, client_id, status, scenario, rev_no,
-                          assumptions, items, regions, meta, created_by)
-       VALUES(?, ?, ?, 'draft', ?, 1, ?, ?, ?, ?, ?)`,
-      number,
-      parsed.data.title,
-      parsed.data.client_id ?? null,
-      snapshot.scenario,
-      JSON.stringify(snapshot.assumptions),
-      JSON.stringify(snapshot.items),
-      JSON.stringify(snapshot.regions),
-      JSON.stringify(snapshot.meta),
-      req.user!.id,
-    );
-    const newId = Number(info.lastInsertRowid);
-    saveRevision(newId, 1, snapshot, req.user!.id, "Dibuat");
-    return newId;
-  });
-
-  audit(req.user!.id, "quote", id, "created", { number, title: parsed.data.title });
-  res.status(201).json({ quote: findQuote(id) });
+  audit(req.user!.id, "quote", id!, "created", { number, title: parsed.data.title });
+  res.status(201).json({ quote: findQuote(id!) });
 });
 
 quotesRouter.put("/:id", (req: AuthedRequest, res) => {
@@ -175,6 +188,7 @@ quotesRouter.put("/:id", (req: AuthedRequest, res) => {
       title: z.string().min(1).max(200).optional(),
       client_id: z.number().int().nullable().optional(),
       snapshot: snapshotSchema,
+      expected_version: z.number().int(),
     })
     .safeParse(req.body);
   if (!parsed.success) {
@@ -182,10 +196,11 @@ quotesRouter.put("/:id", (req: AuthedRequest, res) => {
     return;
   }
   const s = parsed.data.snapshot;
-  run(
+  const info = run(
     `UPDATE quotes SET title = COALESCE(?, title), client_id = ?, scenario = ?,
-            assumptions = ?, items = ?, regions = ?, meta = ?, updated_at = datetime('now')
-      WHERE id = ?`,
+            assumptions = ?, items = ?, regions = ?, meta = ?,
+            version = version + 1, updated_at = datetime('now')
+      WHERE id = ? AND version = ?`,
     parsed.data.title ?? null,
     parsed.data.client_id === undefined ? existing.client_id : parsed.data.client_id,
     s.scenario,
@@ -194,7 +209,15 @@ quotesRouter.put("/:id", (req: AuthedRequest, res) => {
     JSON.stringify(s.regions),
     JSON.stringify(s.meta),
     id,
+    parsed.data.expected_version,
   );
+  if (info.changes === 0) {
+    res.status(409).json({
+      error: "Quotation ini sudah diubah pengguna lain. Muat ulang untuk melihat versi terbaru.",
+      quote: findQuote(id),
+    });
+    return;
+  }
   res.json({ quote: findQuote(id) });
 });
 
@@ -235,7 +258,7 @@ quotesRouter.post("/:id/restore/:revisionId", (req: AuthedRequest, res) => {
   const s = JSON.parse(rev.snapshot) as QuoteSnapshot;
   run(
     `UPDATE quotes SET scenario = ?, assumptions = ?, items = ?, regions = ?, meta = ?,
-            updated_at = datetime('now') WHERE id = ?`,
+            version = version + 1, updated_at = datetime('now') WHERE id = ?`,
     s.scenario ?? quote.scenario,
     JSON.stringify(s.assumptions),
     JSON.stringify(s.items),

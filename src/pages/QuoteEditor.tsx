@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useUnsavedGuard } from "../context/UnsavedGuardContext";
@@ -179,16 +179,25 @@ export function QuoteEditorPage() {
     if (!snapshot || !detail) return;
     setSaving(true);
     try {
-      await api.put(`/quotes/${quoteId}`, { snapshot, client_id: detail.quote.client_id });
+      await api.put(`/quotes/${quoteId}`, {
+        snapshot,
+        client_id: detail.quote.client_id,
+        expected_version: detail.quote.version,
+      });
       saved.current = JSON.stringify(snapshot);
       setDirty(false);
       toast("Tersimpan", "success");
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Gagal menyimpan.", "error");
+      if (e instanceof ApiError && e.status === 409) {
+        toast("Quotation ini sudah diubah pengguna lain. Memuat ulang…", "error");
+        await load();
+      } else {
+        toast(e instanceof Error ? e.message : "Gagal menyimpan.", "error");
+      }
     } finally {
       setSaving(false);
     }
-  }, [snapshot, detail, quoteId, toast]);
+  }, [snapshot, detail, quoteId, toast, load]);
 
   // Ctrl/Cmd+S saves, the way a spreadsheet would.
   useEffect(() => {
@@ -507,10 +516,19 @@ export function QuoteEditorPage() {
                           const value = e.target.value === "" ? null : Number(e.target.value);
                           setDetail({ ...detail, quote: { ...quote, client_id: value } });
                           try {
-                            await api.put(`/quotes/${quoteId}`, { snapshot, client_id: value });
+                            await api.put(`/quotes/${quoteId}`, {
+                              snapshot,
+                              client_id: value,
+                              expected_version: quote.version,
+                            });
                             await load();
                           } catch (err) {
-                            toast(err instanceof Error ? err.message : "Gagal mengubah klien.", "error");
+                            if (err instanceof ApiError && err.status === 409) {
+                              toast("Quotation ini sudah diubah pengguna lain. Memuat ulang…", "error");
+                              await load();
+                            } else {
+                              toast(err instanceof Error ? err.message : "Gagal mengubah klien.", "error");
+                            }
                           }
                         }}
                       >

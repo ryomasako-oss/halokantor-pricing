@@ -25,6 +25,7 @@ export interface QuoteRow {
   status: QuoteStatus;
   scenario: number;
   rev_no: number;
+  version: number;
   assumptions: string;
   items: string;
   regions: string;
@@ -80,6 +81,7 @@ export function hydrate(row: QuoteRow): Quote {
     status: row.status,
     scenario: (row.scenario as ScenarioIndex) ?? 1,
     rev_no: row.rev_no,
+    version: row.version,
     created_by: row.created_by,
     created_by_name: row.created_by_name,
     approved_by: row.approved_by,

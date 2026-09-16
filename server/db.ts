@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS quotes (
   status         TEXT NOT NULL DEFAULT 'draft',
   scenario       INTEGER NOT NULL DEFAULT 1,
   rev_no         INTEGER NOT NULL DEFAULT 1,
+  version        INTEGER NOT NULL DEFAULT 1,
   assumptions    TEXT NOT NULL,
   items          TEXT NOT NULL,
   regions        TEXT NOT NULL,
@@ -76,6 +77,7 @@ CREATE TABLE IF NOT EXISTS quotes (
 );
 CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);
 CREATE INDEX IF NOT EXISTS idx_quotes_client ON quotes(client_id);
+CREATE INDEX IF NOT EXISTS idx_quotes_created_by ON quotes(created_by);
 
 CREATE TABLE IF NOT EXISTS quote_revisions (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,6 +104,7 @@ CREATE TABLE IF NOT EXISTS approvals (
   net_margin     REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_appr_decision ON approvals(decision);
+CREATE INDEX IF NOT EXISTS idx_appr_quote_decision ON approvals(quote_id, decision);
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -119,6 +122,14 @@ CREATE TABLE IF NOT EXISTS settings (
   value  TEXT NOT NULL
 );
 `);
+
+// The CREATE TABLE above only adds `version` for a fresh database; migrate
+// an existing dev database in place (mirrors migrations/0002_consistency.sql).
+try {
+  db.exec("ALTER TABLE quotes ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
+} catch (err) {
+  if (!(err instanceof Error) || !err.message.includes("duplicate column name")) throw err;
+}
 
 /* ---------------- typed query helpers ---------------- */
 
