@@ -80,6 +80,11 @@ export const companySchema = z.object({
   email: z.string().max(200).default(""),
   npwp: z.string().max(64).default(""),
   bank: z.string().max(300).default(""),
+  logo: z
+    .string()
+    .max(700_000)
+    .regex(/^$|^data:image\/(png|jpeg|jpg|webp);base64,/)
+    .default(""),
 });
 
 export const clientSchema = z.object({

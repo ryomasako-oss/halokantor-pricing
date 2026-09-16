@@ -43,6 +43,23 @@ export function SettingsPage() {
     }
   };
 
+  const MAX_LOGO_BYTES = 500_000;
+
+  const onLogoSelected = (file: File | undefined) => {
+    if (!file || !company) return;
+    if (!/^image\/(png|jpeg|jpg|webp)$/.test(file.type)) {
+      toast("Format logo harus PNG, JPEG, atau WEBP.", "error");
+      return;
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      toast("Ukuran logo maksimum 500 KB.", "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setCompany({ ...company, logo: reader.result as string });
+    reader.readAsDataURL(file);
+  };
+
   const saveCompany = async () => {
     if (!company) return;
     try {
@@ -143,6 +160,40 @@ export function SettingsPage() {
           <section className="card">
             <div className="card-head"><h2>Identitas di dokumen penawaran</h2></div>
             <div className="card-body">
+              <label className="field" style={{ marginBottom: 12 }}>
+                <span>Logo perusahaan</span>
+                <div className="row" style={{ gap: 12, alignItems: "center" }}>
+                  {company.logo ? (
+                    <img
+                      src={company.logo}
+                      alt="Logo"
+                      style={{ maxHeight: 44, maxWidth: 160, objectFit: "contain", border: "1px solid var(--rule)", borderRadius: 6, padding: 4 }}
+                    />
+                  ) : (
+                    <span className="muted small">Belum ada logo — dokumen memakai nama merek dagang sebagai teks.</span>
+                  )}
+                  {can("manage_company") && (
+                    <>
+                      <input
+                        id="logo-upload"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        style={{ display: "none" }}
+                        onChange={(e) => onLogoSelected(e.target.files?.[0])}
+                      />
+                      <label htmlFor="logo-upload" className="btn small ghost" style={{ cursor: "pointer" }}>
+                        {company.logo ? "Ganti logo" : "Unggah logo"}
+                      </label>
+                      {company.logo && (
+                        <button className="btn small ghost" onClick={() => setCompany({ ...company, logo: "" })}>
+                          Hapus
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+                <span className="muted small">PNG, JPEG, atau WEBP, maksimum 500 KB.</span>
+              </label>
               <div className="field-grid">
                 {([
                   ["brand", "Merek dagang"],

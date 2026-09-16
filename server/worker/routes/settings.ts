@@ -11,13 +11,14 @@ settingsRouter.use(requireAuth);
 
 export const DEFAULT_COMPANY = {
   name: "PT Salvator Inti Pratama",
-  brand: "Halokantor",
+  brand: "PT Salvator Inti Pratama",
   tagline: "Perlengkapan kantor B2B",
   address: "Tiang Bendera 3 No. 52-9, Jakarta Barat, DKI Jakarta",
   phone: "",
   email: "",
   npwp: "",
   bank: "",
+  logo: "",
 };
 
 settingsRouter.get("/", async (c) => {

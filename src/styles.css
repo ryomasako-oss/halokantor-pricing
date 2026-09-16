@@ -345,6 +345,7 @@ input[type=checkbox] { accent-color: var(--navy); width: 16px; height: 16px; fle
 .quote-doc { border: 1px solid var(--rule); border-radius: 14px; padding: 22px; background: #fff; border-top: 4px solid var(--c); }
 .quote-top { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--rule); }
 .wordmark { font-weight: 800; font-size: 22px; color: var(--navy); letter-spacing: -.03em; }
+.quote-logo { max-height: 44px; max-width: 220px; object-fit: contain; margin-bottom: 6px; }
 .quote-title { font-weight: 750; font-size: 18px; color: var(--c); text-align: right; }
 .quote-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; background: var(--soft); border-radius: 10px; padding: 11px; margin: 13px 0; }
 .quote-meta div { display: flex; flex-direction: column; }

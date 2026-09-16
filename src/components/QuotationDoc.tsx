@@ -15,6 +15,7 @@ export interface CompanyInfo {
   email: string;
   npwp: string;
   bank: string;
+  logo?: string;
 }
 
 interface Props {
@@ -53,7 +54,11 @@ export function QuotationDoc({
     <div className="quote-doc print-area" style={{ ["--c" as string]: sc.color }}>
       <div className="quote-top">
         <div>
-          <div className="wordmark">{company.brand}</div>
+          {company.logo ? (
+            <img src={company.logo} alt={company.brand} className="quote-logo" />
+          ) : (
+            <div className="wordmark">{company.brand}</div>
+          )}
           <div className="muted small">
             {company.name}
             {company.tagline ? `, ${company.tagline}` : ""}

@@ -30,10 +30,23 @@ export function quotationPdf(input: Input): jsPDF {
   const W = doc.internal.pageSize.getWidth();
   const M = 40;
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(20);
-  doc.setTextColor(...NAVY);
-  doc.text(company.brand, M, 56);
+  let headerBottom = 56;
+  if (company.logo) {
+    const format = company.logo.startsWith("data:image/png") ? "PNG" : company.logo.startsWith("data:image/webp") ? "WEBP" : "JPEG";
+    const { width, height } = doc.getImageProperties(company.logo);
+    const maxW = 140;
+    const maxH = 40;
+    const scale = Math.min(maxW / width, maxH / height, 1);
+    const w = width * scale;
+    const h = height * scale;
+    doc.addImage(company.logo, format, M, 24, w, h);
+    headerBottom = 24 + h;
+  } else {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(...NAVY);
+    doc.text(company.brand, M, 56);
+  }
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
@@ -43,7 +56,7 @@ export function quotationPdf(input: Input): jsPDF {
     company.address,
     [company.phone, company.email].filter(Boolean).join(" · "),
   ].filter(Boolean);
-  companyLines.forEach((line, i) => doc.text(line, M, 70 + i * 11));
+  companyLines.forEach((line, i) => doc.text(line, M, headerBottom + 14 + i * 11));
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);
@@ -55,7 +68,7 @@ export function quotationPdf(input: Input): jsPDF {
     doc.text("DRAFT — belum disetujui", W - M, 70, { align: "right" });
   }
 
-  const top = 70 + companyLines.length * 11 + 14;
+  const top = headerBottom + 14 + companyLines.length * 11 + 14;
   doc.setDrawColor(220, 226, 232);
   doc.line(M, top, W - M, top);
 
