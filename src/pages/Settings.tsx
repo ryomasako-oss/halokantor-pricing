@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -11,11 +12,13 @@ import type { CompanyInfo } from "../components/QuotationDoc";
 export function SettingsPage() {
   const { user, can } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
   const [policy, setPolicy] = useState<PricingPolicy | null>(null);
   const [company, setCompany] = useState<CompanyInfo | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [creating, setCreating] = useState(false);
   const [password, setPassword] = useState({ current: "", next: "", confirm: "" });
+  const [resettingUser, setResettingUser] = useState<User | null>(null);
 
   const loadUsers = useCallback(() => {
     if (!can("manage_users")) return;
@@ -296,6 +299,7 @@ export function SettingsPage() {
                     <th className="l">Email</th>
                     <th className="l">Peran</th>
                     <th className="l">Status</th>
+                    <th className="l">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -345,6 +349,21 @@ export function SettingsPage() {
                           <span className="small">{u.active ? "Aktif" : "Nonaktif"}</span>
                         </label>
                       </td>
+                      <td className="l">
+                        <div className="row-wrap" style={{ gap: 6 }}>
+                          <button
+                            className="btn ghost small"
+                            onClick={() => navigate(`/quotes?user_id=${u.id}&user_name=${encodeURIComponent(u.name)}`)}
+                          >
+                            Lihat quotation
+                          </button>
+                          {u.id !== user?.id && (
+                            <button className="btn ghost small" onClick={() => setResettingUser(u)}>
+                              Reset kata sandi
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -364,7 +383,84 @@ export function SettingsPage() {
           }}
         />
       )}
+
+      {resettingUser && (
+        <ResetPasswordModal
+          targetUser={resettingUser}
+          onClose={() => setResettingUser(null)}
+          onDone={() => {
+            setResettingUser(null);
+            toast("Kata sandi pengguna direset.", "success");
+          }}
+        />
+      )}
     </main>
+  );
+}
+
+function ResetPasswordModal({
+  targetUser,
+  onClose,
+  onDone,
+}: {
+  targetUser: User;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (next !== confirm) {
+      toast("Konfirmasi kata sandi tidak cocok.", "error");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.patch(`/auth/users/${targetUser.id}`, { password: next });
+      onDone();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Gagal mereset kata sandi.", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={`Reset kata sandi — ${targetUser.name}`}
+      sub="Sampaikan kata sandi baru ke pengguna, lalu minta mereka menggantinya di menu Pengaturan."
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn ghost" onClick={onClose}>Batal</button>
+          <button className="btn primary" disabled={next.length < 8 || saving} onClick={submit}>
+            {saving ? "Menyimpan…" : "Reset kata sandi"}
+          </button>
+        </>
+      }
+    >
+      <div className="col" style={{ gap: 12 }}>
+        <label className="field">
+          <span>Kata sandi baru (min. 8 karakter)</span>
+          <input
+            className="input" type="password" autoComplete="new-password"
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span>Ulangi kata sandi baru</span>
+          <input
+            className="input" type="password" autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+          />
+        </label>
+      </div>
+    </Modal>
   );
 }
 

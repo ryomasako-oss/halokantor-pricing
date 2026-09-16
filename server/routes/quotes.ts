@@ -40,6 +40,14 @@ quotesRouter.get("/", (req: AuthedRequest, res) => {
     where.push("q.created_by = ?");
     params.push(req.user!.id);
   }
+  const userIdParam = String(req.query.user_id ?? "").trim();
+  if (userIdParam) {
+    const uid = Number(userIdParam);
+    if (Number.isFinite(uid)) {
+      where.push("q.created_by = ?");
+      params.push(uid);
+    }
+  }
   const quotes = listQuoteRows(where.length ? `WHERE ${where.join(" AND ")}` : "", ...params);
   res.json({
     quotes: quotes.map((q) => {
