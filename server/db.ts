@@ -121,6 +121,13 @@ CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,
   value  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS password_reset_requests (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  email       TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_pwreset_email ON password_reset_requests(email);
 `);
 
 // The CREATE TABLE above only adds `version` for a fresh database; migrate

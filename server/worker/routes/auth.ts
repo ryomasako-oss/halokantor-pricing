@@ -46,6 +46,39 @@ authRouter.post("/login", async (c) => {
   return c.json({ user });
 });
 
+authRouter.post("/forgot-password", async (c) => {
+  const { success } = await c.env.AUTH_LIMITER.limit({ key: clientIp(c) });
+  if (!success) return c.json({ error: "Terlalu banyak percobaan. Coba lagi sebentar lagi." }, 429);
+
+  const parsed = z.object({ email: z.string().email() }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Masukkan email yang valid." }, 400);
+
+  const account = await get<{ id: number }>(
+    c.env.DB,
+    "SELECT id FROM users WHERE lower(email) = lower(?) AND active = 1",
+    parsed.data.email,
+  );
+  // Only queue a request for a real, active account — but the response is
+  // identical either way, so the form can't be used to enumerate accounts.
+  if (account) {
+    await run(c.env.DB, "INSERT INTO password_reset_requests(email) VALUES(?)", parsed.data.email.toLowerCase());
+  }
+  return c.json({ ok: true });
+});
+
+authRouter.get("/password-reset-requests", requirePermission("manage_users"), async (c) => {
+  const requests = await all(
+    c.env.DB,
+    "SELECT id, email, created_at FROM password_reset_requests ORDER BY created_at DESC",
+  );
+  return c.json({ requests });
+});
+
+authRouter.delete("/password-reset-requests/:id", requirePermission("manage_users"), async (c) => {
+  await run(c.env.DB, "DELETE FROM password_reset_requests WHERE id = ?", Number(c.req.param("id")));
+  return c.json({ ok: true });
+});
+
 authRouter.post("/logout", async (c) => {
   const user = c.get("user");
   if (user) await audit(c.env.DB, user.id, "user", user.id, "logout");

@@ -13,6 +13,12 @@ export interface User {
   created_at: string;
 }
 
+export interface PasswordResetRequest {
+  id: number;
+  email: string;
+  created_at: string;
+}
+
 /** The three pricing strategies the engine evaluates side by side. */
 export type ScenarioKey = "S1" | "S2" | "S3";
 export type ScenarioIndex = 0 | 1 | 2;

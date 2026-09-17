@@ -5,8 +5,9 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { Icon } from "../components/Icon";
 import { Modal } from "../components/Modal";
+import { PasswordInput } from "../components/PasswordInput";
 import { pct, rp } from "@shared/format";
-import type { PricingPolicy, Role, User } from "@shared/types";
+import type { PasswordResetRequest, PricingPolicy, Role, User } from "@shared/types";
 import type { CompanyInfo } from "../components/QuotationDoc";
 
 export function SettingsPage() {
@@ -19,10 +20,19 @@ export function SettingsPage() {
   const [creating, setCreating] = useState(false);
   const [password, setPassword] = useState({ current: "", next: "", confirm: "" });
   const [resettingUser, setResettingUser] = useState<User | null>(null);
+  const [resetRequests, setResetRequests] = useState<PasswordResetRequest[]>([]);
 
   const loadUsers = useCallback(() => {
     if (!can("manage_users")) return;
     api.get<{ users: User[] }>("/auth/users").then((r) => setUsers(r.users)).catch(() => undefined);
+  }, [can]);
+
+  const loadResetRequests = useCallback(() => {
+    if (!can("manage_users")) return;
+    api
+      .get<{ requests: PasswordResetRequest[] }>("/auth/password-reset-requests")
+      .then((r) => setResetRequests(r.requests))
+      .catch(() => undefined);
   }, [can]);
 
   useEffect(() => {
@@ -34,7 +44,17 @@ export function SettingsPage() {
       })
       .catch((e) => toast(e.message, "error"));
     loadUsers();
-  }, [loadUsers, toast]);
+    loadResetRequests();
+  }, [loadUsers, loadResetRequests, toast]);
+
+  const dismissResetRequest = async (id: number) => {
+    try {
+      await api.del(`/auth/password-reset-requests/${id}`);
+      setResetRequests((rs) => rs.filter((r) => r.id !== id));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Gagal.", "error");
+    }
+  };
 
   const savePolicy = async () => {
     if (!policy) return;
@@ -248,26 +268,26 @@ export function SettingsPage() {
             <div className="field-grid">
               <label className="field">
                 <span>Kata sandi saat ini</span>
-                <input
-                  className="input" type="password" autoComplete="current-password"
+                <PasswordInput
+                  autoComplete="current-password"
                   value={password.current}
-                  onChange={(e) => setPassword({ ...password, current: e.target.value })}
+                  onChange={(v) => setPassword({ ...password, current: v })}
                 />
               </label>
               <label className="field">
                 <span>Kata sandi baru (min. 8 karakter)</span>
-                <input
-                  className="input" type="password" autoComplete="new-password"
+                <PasswordInput
+                  autoComplete="new-password"
                   value={password.next}
-                  onChange={(e) => setPassword({ ...password, next: e.target.value })}
+                  onChange={(v) => setPassword({ ...password, next: v })}
                 />
               </label>
               <label className="field">
                 <span>Ulangi kata sandi baru</span>
-                <input
-                  className="input" type="password" autoComplete="new-password"
+                <PasswordInput
+                  autoComplete="new-password"
                   value={password.confirm}
-                  onChange={(e) => setPassword({ ...password, confirm: e.target.value })}
+                  onChange={(v) => setPassword({ ...password, confirm: v })}
                 />
               </label>
             </div>
@@ -282,6 +302,46 @@ export function SettingsPage() {
             </div>
           </div>
         </section>
+
+        {can("manage_users") && resetRequests.length > 0 && (
+          <section className="card">
+            <div className="card-head"><h2>Permintaan reset kata sandi</h2></div>
+            <div className="table-wrap" style={{ border: 0 }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th className="l">Email</th>
+                    <th className="l">Diminta</th>
+                    <th className="l">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resetRequests.map((r) => {
+                    const target = users.find((u) => u.email.toLowerCase() === r.email.toLowerCase());
+                    return (
+                      <tr key={r.id}>
+                        <td className="l">{r.email}</td>
+                        <td className="l muted">{new Date(r.created_at).toLocaleString("id-ID")}</td>
+                        <td className="l">
+                          <div className="row-wrap" style={{ gap: 6 }}>
+                            {target && (
+                              <button className="btn ghost small" onClick={() => setResettingUser(target)}>
+                                Reset kata sandi
+                              </button>
+                            )}
+                            <button className="btn ghost small" onClick={() => dismissResetRequest(r.id)}>
+                              Tandai selesai
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         {can("manage_users") && (
           <section className="card">
@@ -389,6 +449,10 @@ export function SettingsPage() {
           targetUser={resettingUser}
           onClose={() => setResettingUser(null)}
           onDone={() => {
+            const resolved = resetRequests.filter(
+              (r) => r.email.toLowerCase() === resettingUser.email.toLowerCase(),
+            );
+            resolved.forEach((r) => dismissResetRequest(r.id));
             setResettingUser(null);
             toast("Kata sandi pengguna direset.", "success");
           }}
@@ -445,19 +509,11 @@ function ResetPasswordModal({
       <div className="col" style={{ gap: 12 }}>
         <label className="field">
           <span>Kata sandi baru (min. 8 karakter)</span>
-          <input
-            className="input" type="password" autoComplete="new-password"
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
-          />
+          <PasswordInput autoComplete="new-password" value={next} onChange={setNext} />
         </label>
         <label className="field">
           <span>Ulangi kata sandi baru</span>
-          <input
-            className="input" type="password" autoComplete="new-password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-          />
+          <PasswordInput autoComplete="new-password" value={confirm} onChange={setConfirm} />
         </label>
       </div>
     </Modal>
@@ -508,10 +564,10 @@ function NewUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
         </label>
         <label className="field">
           <span>Kata sandi awal (min. 8 karakter)</span>
-          <input
-            className="input" type="text"
+          <PasswordInput
+            autoComplete="new-password"
             value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            onChange={(v) => setForm({ ...form, password: v })}
           />
         </label>
         <label className="field">

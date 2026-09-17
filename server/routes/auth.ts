@@ -55,6 +55,37 @@ authRouter.post("/login", loginLimiter, (req, res) => {
   res.json({ user });
 });
 
+authRouter.post("/forgot-password", loginLimiter, (req, res) => {
+  const parsed = z.object({ email: z.string().email() }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Masukkan email yang valid." });
+    return;
+  }
+  const account = get<{ id: number }>(
+    "SELECT id FROM users WHERE lower(email) = lower(?) AND active = 1",
+    parsed.data.email,
+  );
+  // Only queue a request for a real, active account — but the response is
+  // identical either way, so the form can't be used to enumerate accounts.
+  if (account) {
+    run("INSERT INTO password_reset_requests(email) VALUES(?)", parsed.data.email.toLowerCase());
+  }
+  res.json({ ok: true });
+});
+
+authRouter.get("/password-reset-requests", requirePermission("manage_users"), (_req, res) => {
+  res.json({
+    requests: all(
+      "SELECT id, email, created_at FROM password_reset_requests ORDER BY created_at DESC",
+    ),
+  });
+});
+
+authRouter.delete("/password-reset-requests/:id", requirePermission("manage_users"), (req, res) => {
+  run("DELETE FROM password_reset_requests WHERE id = ?", Number(req.params.id));
+  res.json({ ok: true });
+});
+
 authRouter.post("/logout", (req: AuthedRequest, res) => {
   if (req.user) audit(req.user.id, "user", req.user.id, "logout");
   clearSession(res);

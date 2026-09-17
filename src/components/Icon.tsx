@@ -35,6 +35,8 @@ export function Icon({ name, size = 18 }: { name: string; size?: number }) {
     case "logout": return <svg {...p}><path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9" /></svg>;
     case "alert": return <svg {...p}><path d="M12 4l9 16H3z" /><path d="M12 10v4M12 17h.01" /></svg>;
     case "file": return <svg {...p}><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5" /></svg>;
+    case "eye": return <svg {...p}><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3" /></svg>;
+    case "eye-off": return <svg {...p}><path d="M3 3l18 18" /><path d="M10.6 5.2A11 11 0 0112 5c7 0 11 7 11 7a13.4 13.4 0 01-3.2 3.9M6.5 6.6C3.4 8.5 1 12 1 12s4 7 11 7c1.4 0 2.7-.3 3.9-.7" /><path d="M9.5 9.7a3 3 0 004.2 4.2" /></svg>;
     default: return null;
   }
 }

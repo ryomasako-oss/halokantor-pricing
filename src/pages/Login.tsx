@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Icon } from "../components/Icon";
+import { PasswordInput } from "../components/PasswordInput";
+import { Modal } from "../components/Modal";
+import { api } from "../api";
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -8,6 +11,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,18 +48,24 @@ export function LoginPage() {
           </label>
           <label className="field">
             <span>Kata sandi</span>
-            <input
-              className="input"
-              type="password"
+            <PasswordInput
               autoComplete="current-password"
               required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={setPassword}
             />
           </label>
           {error && <p className="notice error">{error}</p>}
           <button className="btn primary block" type="submit" disabled={busy || !email || !password}>
             {busy ? "Memeriksa…" : "Masuk"}
+          </button>
+          <button
+            type="button"
+            className="link-btn"
+            style={{ alignSelf: "center" }}
+            onClick={() => setForgotOpen(true)}
+          >
+            Lupa kata sandi?
           </button>
         </div>
 
@@ -64,6 +74,73 @@ export function LoginPage() {
           Pengaturan.
         </p>
       </form>
+
+      {forgotOpen && <ForgotPasswordModal onClose={() => setForgotOpen(false)} />}
     </div>
+  );
+}
+
+function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    setSending(true);
+    setError("");
+    try {
+      await api.post("/auth/forgot-password", { email: email.trim() });
+      setSent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengirim permintaan.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Lupa kata sandi"
+      sub={
+        sent
+          ? undefined
+          : "Permintaan akan diteruskan ke admin untuk mereset kata sandi Anda secara manual."
+      }
+      onClose={onClose}
+      footer={
+        sent ? (
+          <button className="btn primary" onClick={onClose}>Tutup</button>
+        ) : (
+          <>
+            <button className="btn ghost" onClick={onClose}>Batal</button>
+            <button className="btn primary" disabled={!email || sending} onClick={submit}>
+              {sending ? "Mengirim…" : "Kirim permintaan"}
+            </button>
+          </>
+        )
+      }
+    >
+      {sent ? (
+        <p className="notice ok">
+          Permintaan reset kata sandi terkirim. Admin akan menghubungi Anda dengan kata sandi baru.
+        </p>
+      ) : (
+        <div className="col" style={{ gap: 12 }}>
+          <label className="field">
+            <span>Email kantor</span>
+            <input
+              className="input"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="nama@salvator.co.id"
+            />
+          </label>
+          {error && <p className="notice error">{error}</p>}
+        </div>
+      )}
+    </Modal>
   );
 }
