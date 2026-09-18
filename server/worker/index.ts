@@ -46,7 +46,19 @@ app.route("/api/approvals", approvalsRouter);
 app.route("/api/assistant", assistantRouter);
 app.route("/api/settings", settingsRouter);
 
-app.notFound((c) => c.json({ error: "Endpoint tidak ditemukan." }, 404));
+// Non-API paths reach here because run_worker_first now covers every
+// request (not just /api/*) — see wrangler.toml. Hand those to the static
+// asset binding so the SPA still serves, while keeping secureHeaders applied
+// (it runs before this point in the middleware chain, so the response it
+// produces still carries CSP/HSTS/etc).
+app.notFound(async (c) => {
+  if (c.req.path.startsWith("/api/")) return c.json({ error: "Endpoint tidak ditemukan." }, 404);
+  // ASSETS.fetch() returns a Response with immutable headers; secureHeaders
+  // mutates c.res after this handler returns, so re-wrap it in a fresh
+  // Response whose Headers object is a normal mutable copy.
+  const asset = await c.env.ASSETS.fetch(c.req.raw);
+  return new Response(asset.body, asset);
+});
 
 app.onError((err, c) => {
   console.error("[worker] unhandled:", err);

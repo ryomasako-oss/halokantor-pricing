@@ -2,6 +2,7 @@
 
 export interface Bindings {
   DB: D1Database;
+  ASSETS: Fetcher;
   JWT_SECRET: string;
   NODE_ENV?: string;
   ANTHROPIC_API_KEY?: string;

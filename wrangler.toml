@@ -11,7 +11,12 @@ migrations_dir = "migrations"
 [assets]
 directory = "./dist/client"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*"]
+binding = "ASSETS"
+# Every request is routed through the Worker first (not just /api/*) so that
+# secureHeaders (CSP, HSTS, X-Frame-Options, X-Content-Type-Options) applies
+# to the HTML/JS/CSS the browser actually loads, not only to JSON API
+# responses. Non-API requests fall through to ASSETS.fetch() in index.ts.
+run_worker_first = true
 
 [vars]
 NODE_ENV = "production"
