@@ -54,6 +54,7 @@ async function makeExpressDriver(): Promise<Driver> {
   const { loadUser, hashPassword } = await import("../server/auth.js");
   const { authRouter } = await import("../server/routes/auth.js");
   const { quotesRouter } = await import("../server/routes/quotes.js");
+  const { approvalsRouter } = await import("../server/routes/approvals.js");
   const { run } = await import("../server/db.js");
 
   const app = express();
@@ -62,6 +63,7 @@ async function makeExpressDriver(): Promise<Driver> {
   app.use(loadUser);
   app.use("/api/auth", authRouter);
   app.use("/api/quotes", quotesRouter);
+  app.use("/api/approvals", approvalsRouter);
 
   let server: Server;
   await new Promise<void>((resolve) => {
@@ -123,12 +125,14 @@ async function makeWorkerDriver(): Promise<Driver> {
   const { hashPassword, loadUser } = await import("../server/worker/auth.js");
   const { authRouter } = await import("../server/worker/routes/auth.js");
   const { quotesRouter } = await import("../server/worker/routes/quotes.js");
+  const { approvalsRouter } = await import("../server/worker/routes/approvals.js");
   const { run } = await import("../server/db.d1.js");
 
   const app = new Hono();
   app.use(loadUser);
   app.route("/api/auth", authRouter);
   app.route("/api/quotes", quotesRouter);
+  app.route("/api/approvals", approvalsRouter);
 
   const env = {
     DB: db,
@@ -427,6 +431,18 @@ scenario("a manager CAN submit another rep's draft (edit_all_quotes)", async (d)
   const quote = await createDraft(d, rep, [cleanItem()]);
   const submitted = await d.api("POST", `/api/quotes/${quote.id}/submit`, { session: manager });
   return { status: submitted.status, quoteStatus: submitted.json.quote.status };
+});
+
+scenario("a rep cannot read the company-wide approval queue (403)", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const listed = await d.api("GET", "/api/approvals?decision=pending", { session: rep });
+  return { status: listed.status };
+});
+
+scenario("a manager CAN read the approval queue", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const listed = await d.api("GET", "/api/approvals?decision=pending", { session: manager });
+  return { status: listed.status, isArray: Array.isArray(listed.json.approvals) };
 });
 
 // ---------------------------------------------------------------

@@ -12,6 +12,7 @@ export interface Bindings {
   ADMIN_NAME?: string;
   AUTH_LIMITER: RateLimit;
   ASSISTANT_LIMITER: RateLimit;
+  API_LIMITER: RateLimit;
 }
 
 /** Client IP as seen by Cloudflare's edge, for keying rate limits. */

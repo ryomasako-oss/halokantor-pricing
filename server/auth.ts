@@ -29,6 +29,7 @@ export const verifyPassword = (plain: string, hash: string): boolean =>
 
 export function issueSession(res: Response, user: User): void {
   const token = jwt.sign({ sub: String(user.id), role: user.role }, secret(), {
+    algorithm: "HS256",
     expiresIn: TOKEN_TTL,
   });
   res.cookie(COOKIE, token, {
@@ -53,7 +54,7 @@ export function loadUser(req: AuthedRequest, _res: Response, next: NextFunction)
   const token = req.cookies?.[COOKIE];
   if (!token) return next();
   try {
-    const payload = jwt.verify(token, secret()) as { sub: string };
+    const payload = jwt.verify(token, secret(), { algorithms: ["HS256"] }) as { sub: string };
     const user = get<User>(
       "SELECT id, email, name, role, active, created_at FROM users WHERE id = ? AND active = 1",
       Number(payload.sub),

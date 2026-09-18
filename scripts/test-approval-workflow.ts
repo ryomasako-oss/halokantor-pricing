@@ -129,6 +129,7 @@ async function setup() {
   const { loadUser, hashPassword } = await import("../server/auth.js");
   const { authRouter } = await import("../server/routes/auth.js");
   const { quotesRouter } = await import("../server/routes/quotes.js");
+  const { approvalsRouter } = await import("../server/routes/approvals.js");
   const { run } = await import("../server/db.js");
 
   const app = express();
@@ -137,6 +138,7 @@ async function setup() {
   app.use(loadUser);
   app.use("/api/auth", authRouter);
   app.use("/api/quotes", quotesRouter);
+  app.use("/api/approvals", approvalsRouter);
 
   run(
     "INSERT INTO users(email, name, password_hash, role) VALUES(?, ?, ?, 'rep')",
@@ -350,6 +352,19 @@ test("10 concurrent creates by the same user all get distinct quote numbers", as
   const results = await Promise.all(Array.from({ length: 10 }, () => createDraft(rep, [cleanItem()])));
   const numbers = results.map((q) => q.number);
   assert.equal(new Set(numbers).size, 10);
+});
+
+test("a rep cannot read the company-wide approval queue (403) — regression for the missing guard found in the 2026-09-19 security review", async () => {
+  const rep = repSession;
+  const listed = await api("GET", "/api/approvals?decision=pending", { session: rep });
+  assert.equal(listed.status, 403);
+});
+
+test("a manager CAN read the approval queue", async () => {
+  const manager = managerSession;
+  const listed = await api("GET", "/api/approvals?decision=pending", { session: manager });
+  assert.equal(listed.status, 200);
+  assert.ok(Array.isArray(listed.json.approvals));
 });
 
 // ---------------------------------------------------------------

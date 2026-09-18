@@ -6,7 +6,7 @@ import { requireAuth, requirePermission } from "../auth.js";
 export const approvalsRouter = Router();
 approvalsRouter.use(requireAuth);
 
-approvalsRouter.get("/", (req, res) => {
+approvalsRouter.get("/", requirePermission("decide_quotes"), (req, res) => {
   const decision = String(req.query.decision ?? "pending");
   const rows = all(
     `SELECT a.id, a.quote_id, a.decision, a.note, a.requested_at, a.decided_at,

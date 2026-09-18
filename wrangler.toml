@@ -33,3 +33,11 @@ simple = { limit = 10, period = 60 }
 name = "ASSISTANT_LIMITER"
 namespace_id = "1002"
 simple = { limit = 20, period = 60 }
+
+# Blanket throttle for the whole /api/* surface, keyed per client IP — mirrors
+# the Express dev backend's global express-rate-limit(600/min) so an
+# authenticated-but-abusive or compromised account can't hammer D1 unchecked.
+[[ratelimits]]
+name = "API_LIMITER"
+namespace_id = "1003"
+simple = { limit = 600, period = 60 }

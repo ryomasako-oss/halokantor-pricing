@@ -14,7 +14,7 @@ import { quotesRouter } from "./routes/quotes";
 import { approvalsRouter } from "./routes/approvals";
 import { assistantRouter, assistantEnabled } from "./routes/assistant";
 import { settingsRouter } from "./routes/settings";
-import type { Env } from "./env";
+import { clientIp, type Env } from "./env";
 
 const app = new Hono<Env>();
 
@@ -35,6 +35,15 @@ app.use(
 );
 
 app.use(loadUser);
+
+// Blanket throttle across the whole /api/* surface — the per-route
+// AUTH_LIMITER/ASSISTANT_LIMITER stay stricter for their own endpoints;
+// this just stops any one client from hammering D1 unchecked elsewhere.
+app.use("/api/*", async (c, next) => {
+  const { success } = await c.env.API_LIMITER.limit({ key: clientIp(c) });
+  if (!success) return c.json({ error: "Terlalu banyak permintaan. Coba lagi sebentar." }, 429);
+  await next();
+});
 
 app.get("/api/health", (c) => c.json({ ok: true, ai: assistantEnabled(c.env.ANTHROPIC_API_KEY), version: "1.0.0" }));
 

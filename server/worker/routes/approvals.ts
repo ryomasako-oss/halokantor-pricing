@@ -7,7 +7,7 @@ import type { Env } from "../env";
 export const approvalsRouter = new Hono<Env>();
 approvalsRouter.use(requireAuth);
 
-approvalsRouter.get("/", async (c) => {
+approvalsRouter.get("/", requirePermission("decide_quotes"), async (c) => {
   const decision = c.req.query("decision") ?? "pending";
   const rows = await all<any>(
     c.env.DB,

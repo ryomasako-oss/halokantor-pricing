@@ -128,7 +128,7 @@ export async function loadUser(c: Context<Env>, next: Next): Promise<void> {
   const token = getCookie(c, COOKIE);
   if (token) {
     try {
-      const { payload } = await jwtVerify(token, secretKey(c.env));
+      const { payload } = await jwtVerify(token, secretKey(c.env), { algorithms: ["HS256"] });
       const user = await get<User>(
         c.env.DB,
         "SELECT id, email, name, role, active, created_at FROM users WHERE id = ? AND active = 1",
