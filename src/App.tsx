@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./context/AuthContext";
+import { useTheme } from "./context/ThemeContext";
 import { useConfirmLeave } from "./context/UnsavedGuardContext";
 import { Icon } from "./components/Icon";
 import { LoginPage } from "./pages/Login";
@@ -16,6 +17,7 @@ import type { Permission } from "@shared/permissions";
 
 function TopBar() {
   const { user, logout, can } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const [pending, setPending] = useState(0);
   const confirmLeave = useConfirmLeave();
@@ -76,6 +78,14 @@ function TopBar() {
             {user?.role === "admin" ? "Admin" : user?.role === "manager" ? "Manajer" : "Sales"}
           </span>
         </span>
+        <button
+          className="icon-btn"
+          onClick={toggleTheme}
+          title={theme === "dark" ? "Mode terang" : "Mode gelap"}
+          aria-label={theme === "dark" ? "Mode terang" : "Mode gelap"}
+        >
+          <Icon name={theme === "dark" ? "sun" : "moon"} size={17} />
+        </button>
         <button
           className="icon-btn"
           onClick={() => confirmLeave() && void logout()}

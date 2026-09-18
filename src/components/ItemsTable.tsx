@@ -149,7 +149,11 @@ export function ItemsTable({
                 {head("rrp", "RRP")}
                 <th>Role S2</th>
                 {SCENARIOS.map((s, i) => (
-                  <th key={s.key} style={{ color: s.color, background: i === scenario ? s.tint : undefined }}>
+                  <th
+                    key={s.key}
+                    className={i === scenario ? "col-selected" : ""}
+                    style={{ color: s.color, ["--c" as string]: s.color }}
+                  >
                     {s.key}
                   </th>
                 ))}
@@ -233,7 +237,11 @@ export function ItemsTable({
                       </select>
                     </td>
                     {[0, 1, 2].map((k) => (
-                      <td key={k} style={{ background: k === scenario ? SCENARIOS[k].tint : undefined }}>
+                      <td
+                        key={k}
+                        className={k === scenario ? "col-selected" : ""}
+                        style={k === scenario ? { ["--c" as string]: SCENARIOS[k].color } : undefined}
+                      >
                         {k === scenario && !readOnly ? (
                           <input
                             className={`cell ${r.overridden[k] ? "manual" : ""}`}
