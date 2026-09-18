@@ -261,8 +261,8 @@ a { color: var(--navy); }
 .btn.danger:hover:not(:disabled) { background: var(--danger-rule); }
 .btn.success { background: var(--ok); border-color: var(--ok); color: #fff; }
 .btn.success:hover:not(:disabled) { filter: brightness(.9); }
-.btn.ghost { background: transparent; }
-.btn.ghost:hover:not(:disabled) { background: var(--soft); }
+.btn.ghost { background: transparent; border-color: var(--rule); }
+.btn.ghost:hover:not(:disabled) { background: var(--soft); border-color: var(--navy); }
 .btn.small { padding: 5px 11px; font-size: 12px; }
 .btn.block { width: 100%; }
 
