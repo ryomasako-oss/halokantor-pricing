@@ -17,6 +17,8 @@ import {
 } from "../quoteService";
 import { isWithinPolicy } from "../../../shared/policy";
 import { DEFAULT_ASSUMPTIONS, DEFAULT_REGIONS } from "../../../shared/engine";
+import { rolesWith } from "../../../shared/permissions";
+import { notifyQuoteDecided, notifyQuoteSubmitted } from "../notify";
 import type { Client, QuoteSnapshot, QuoteStatus, User } from "../../../shared/types";
 import type { Env } from "../env";
 
@@ -329,6 +331,28 @@ quotesRouter.post("/:id/submit", async (c) => {
     monthly_value,
     net_margin,
   });
+
+  if (!autoApprove) {
+    const roles = rolesWith("decide_quotes");
+    const placeholders = roles.map(() => "?").join(",");
+    const recipients = await all<{ name: string; email: string; phone: string }>(
+      c.env.DB,
+      `SELECT name, email, phone FROM users WHERE role IN (${placeholders}) AND active = 1`,
+      ...roles,
+    );
+    // waitUntil: the response below returns before this settles, and Workers
+    // don't keep running background work past that point unless extended.
+    c.executionCtx.waitUntil(
+      notifyQuoteSubmitted(c.env, {
+        recipients,
+        quoteNumber: quote.number,
+        quoteTitle: quote.title,
+        submittedBy: user.name,
+        quoteId: id,
+      }),
+    );
+  }
+
   return c.json({ quote: await findQuote(c.env.DB, id), breaches, autoApproved: autoApprove });
 });
 
@@ -392,6 +416,26 @@ quotesRouter.post("/:id/decide", requirePermission("decide_quotes"), async (c) =
   await batch(c.env.DB, statements);
 
   await audit(c.env.DB, user.id, "quote", id, parsed.data.decision, { note: parsed.data.note });
+
+  const submitter = await get<{ name: string; email: string; phone: string }>(
+    c.env.DB,
+    "SELECT name, email, phone FROM users WHERE id = ?",
+    quote.created_by,
+  );
+  if (submitter) {
+    c.executionCtx.waitUntil(
+      notifyQuoteDecided(c.env, {
+        recipient: submitter,
+        quoteNumber: quote.number,
+        quoteTitle: quote.title,
+        decision: parsed.data.decision,
+        decidedBy: user.name,
+        note: parsed.data.note,
+        quoteId: id,
+      }),
+    );
+  }
+
   return c.json({ quote: await findQuote(c.env.DB, id) });
 });
 

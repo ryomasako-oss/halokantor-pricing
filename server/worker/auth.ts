@@ -131,7 +131,7 @@ export async function loadUser(c: Context<Env>, next: Next): Promise<void> {
       const { payload } = await jwtVerify(token, secretKey(c.env), { algorithms: ["HS256"] });
       const user = await get<User>(
         c.env.DB,
-        "SELECT id, email, name, role, active, created_at FROM users WHERE id = ? AND active = 1",
+        "SELECT id, email, name, role, active, phone, created_at FROM users WHERE id = ? AND active = 1",
         Number(payload.sub),
       );
       if (user) c.set("user", user);

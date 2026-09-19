@@ -116,7 +116,12 @@ async function makeExpressDriver(): Promise<Driver> {
 async function makeWorkerDriver(): Promise<Driver> {
   const sqlite = new DatabaseSync(":memory:");
   const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
-  for (const file of ["0001_init.sql", "0002_consistency.sql", "0003_password_reset_requests.sql"]) {
+  for (const file of [
+    "0001_init.sql",
+    "0002_consistency.sql",
+    "0003_password_reset_requests.sql",
+    "0004_user_phone.sql",
+  ]) {
     sqlite.exec(readFileSync(path.join(migrationsDir, file), "utf8"));
   }
   const db = new D1DatabaseShim(sqlite) as unknown as D1Database;
@@ -142,6 +147,16 @@ async function makeWorkerDriver(): Promise<Driver> {
     ASSISTANT_LIMITER: new AlwaysAllowRateLimit() as unknown as RateLimit,
   };
 
+  // Hono's Context.executionCtx throws if no real ExecutionContext is passed
+  // to app.request() — routes that call c.executionCtx.waitUntil() (the
+  // notification fire-and-forget calls) need this stub to not crash.
+  const executionCtx = {
+    waitUntil: (promise: Promise<unknown>) => {
+      promise.catch(() => undefined);
+    },
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+
   return {
     name: "worker",
     async api(method, routePath, opts = {}) {
@@ -156,6 +171,7 @@ async function makeWorkerDriver(): Promise<Driver> {
           body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
         },
         env,
+        executionCtx,
       );
       const setCookie = res.headers.get("set-cookie");
       const cookie = setCookie ? setCookie.split(";")[0] : undefined;
@@ -443,6 +459,19 @@ scenario("a manager CAN read the approval queue", async (d) => {
   const manager = await loginCached(d, "manager@test.local", "password123");
   const listed = await d.api("GET", "/api/approvals?decision=pending", { session: manager });
   return { status: listed.status, isArray: Array.isArray(listed.json.approvals) };
+});
+
+scenario("a user can set and clear their own WhatsApp number", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const set = await d.api("PATCH", "/api/auth/profile", { body: { phone: "+6281234567890" }, session: rep });
+  const cleared = await d.api("PATCH", "/api/auth/profile", { body: { phone: "" }, session: rep });
+  return { setStatus: set.status, setPhone: set.json.user.phone, clearedPhone: cleared.json.user.phone };
+});
+
+scenario("an invalid WhatsApp number is rejected with 400", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const updated = await d.api("PATCH", "/api/auth/profile", { body: { phone: "not-a-phone!!" }, session: rep });
+  return { status: updated.status };
 });
 
 // ---------------------------------------------------------------

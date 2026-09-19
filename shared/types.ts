@@ -10,6 +10,7 @@ export interface User {
   name: string;
   role: Role;
   active: 0 | 1;
+  phone: string;
   created_at: string;
 }
 

@@ -367,6 +367,38 @@ test("a manager CAN read the approval queue", async () => {
   assert.ok(Array.isArray(listed.json.approvals));
 });
 
+test("a user can set their own WhatsApp number via PATCH /api/auth/profile", async () => {
+  const rep = repSession;
+  const updated = await api("PATCH", "/api/auth/profile", { body: { phone: "+6281234567890" }, session: rep });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.json.user.phone, "+6281234567890");
+
+  const me = await api("GET", "/api/auth/me", { session: rep });
+  assert.equal(me.json.user.phone, "+6281234567890");
+
+  // clean up so it doesn't leak into other tests
+  await api("PATCH", "/api/auth/profile", { body: { phone: "" }, session: rep });
+});
+
+test("an invalid WhatsApp number is rejected with 400", async () => {
+  const rep = repSession;
+  const updated = await api("PATCH", "/api/auth/profile", { body: { phone: "not-a-phone-number!!" }, session: rep });
+  assert.equal(updated.status, 400);
+});
+
+test("submit/decide still succeed with notification env vars unset (RESEND/TWILIO not configured in this test run)", async () => {
+  const rep = repSession;
+  const manager = managerSession;
+  const quote = await createDraft(rep, [cleanItem()]);
+  const submitted = await api("POST", `/api/quotes/${quote.id}/submit`, { session: rep });
+  assert.equal(submitted.status, 200);
+  const decided = await api("POST", `/api/quotes/${quote.id}/decide`, {
+    body: { decision: "approved", note: "" },
+    session: manager,
+  });
+  assert.equal(decided.status, 200);
+});
+
 // ---------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------

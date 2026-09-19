@@ -108,6 +108,10 @@ export const catalogRowSchema = z.object({
   category: z.string().max(120).optional(),
 });
 
+export const profileSchema = z.object({
+  phone: z.string().max(32).regex(/^$|^\+?[0-9 ()-]{6,20}$/, "Format nomor WhatsApp tidak valid."),
+});
+
 /** Formats a ZodError into one human-readable line for the UI. */
 export function zodMessage(err: z.ZodError): string {
   return err.issues

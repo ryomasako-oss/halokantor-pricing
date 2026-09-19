@@ -13,6 +13,12 @@ export interface Bindings {
   AUTH_LIMITER: RateLimit;
   ASSISTANT_LIMITER: RateLimit;
   API_LIMITER: RateLimit;
+  APP_URL?: string;
+  RESEND_API_KEY?: string;
+  RESEND_FROM_EMAIL?: string;
+  TWILIO_ACCOUNT_SID?: string;
+  TWILIO_AUTH_TOKEN?: string;
+  TWILIO_WHATSAPP_FROM?: string;
 }
 
 /** Client IP as seen by Cloudflare's edge, for keying rate limits. */

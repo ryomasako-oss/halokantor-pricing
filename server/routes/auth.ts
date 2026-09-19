@@ -13,6 +13,7 @@ import {
   verifyPassword,
 } from "../auth.js";
 import { hasPermission, rolesWith } from "../../shared/permissions.js";
+import { profileSchema, zodMessage } from "../validate.js";
 import type { User } from "../../shared/types.js";
 
 export const authRouter = Router();
@@ -48,6 +49,7 @@ authRouter.post("/login", loginLimiter, (req, res) => {
     name: row.name,
     role: row.role,
     active: row.active,
+    phone: row.phone,
     created_at: row.created_at,
   };
   issueSession(res, user);
@@ -117,12 +119,29 @@ authRouter.post("/password", requireAuth, (req: AuthedRequest, res) => {
   res.json({ ok: true });
 });
 
+/** Self-service: a user sets their own WhatsApp number for approval-workflow notifications. */
+authRouter.patch("/profile", requireAuth, (req: AuthedRequest, res) => {
+  const parsed = profileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: zodMessage(parsed.error) });
+    return;
+  }
+  run("UPDATE users SET phone = ? WHERE id = ?", parsed.data.phone, req.user!.id);
+  audit(req.user!.id, "user", req.user!.id, "profile_updated", { phone: Boolean(parsed.data.phone) });
+  res.json({
+    user: get<User>(
+      "SELECT id, email, name, role, active, phone, created_at FROM users WHERE id = ?",
+      req.user!.id,
+    ),
+  });
+});
+
 /* ---------------- user administration ---------------- */
 
 authRouter.get("/users", requirePermission("manage_users"), (_req, res) => {
   res.json({
     users: all<User>(
-      "SELECT id, email, name, role, active, created_at FROM users ORDER BY name",
+      "SELECT id, email, name, role, active, phone, created_at FROM users ORDER BY name",
     ),
   });
 });
@@ -155,7 +174,7 @@ authRouter.post("/users", requirePermission("manage_users"), (req: AuthedRequest
   const id = Number(info.lastInsertRowid);
   audit(req.user!.id, "user", id, "created", { email: parsed.data.email, role: parsed.data.role });
   res.status(201).json({
-    user: get<User>("SELECT id, email, name, role, active, created_at FROM users WHERE id = ?", id),
+    user: get<User>("SELECT id, email, name, role, active, phone, created_at FROM users WHERE id = ?", id),
   });
 });
 
@@ -209,6 +228,6 @@ authRouter.patch("/users/:id", requirePermission("manage_users"), (req: AuthedRe
     run("UPDATE users SET password_hash = ? WHERE id = ?", hashPassword(d.password), id);
   audit(req.user!.id, "user", id, "updated", { ...d, password: d.password ? "(reset)" : undefined });
   res.json({
-    user: get<User>("SELECT id, email, name, role, active, created_at FROM users WHERE id = ?", id),
+    user: get<User>("SELECT id, email, name, role, active, phone, created_at FROM users WHERE id = ?", id),
   });
 });

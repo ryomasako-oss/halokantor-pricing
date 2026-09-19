@@ -17,6 +17,8 @@ import {
 } from "../quoteService.js";
 import { isWithinPolicy } from "../../shared/policy.js";
 import { DEFAULT_ASSUMPTIONS, DEFAULT_REGIONS } from "../../shared/engine.js";
+import { rolesWith } from "../../shared/permissions.js";
+import { notifyQuoteDecided, notifyQuoteSubmitted } from "../notify.js";
 import type { Client, QuoteSnapshot, QuoteStatus } from "../../shared/types.js";
 
 export const quotesRouter = Router();
@@ -331,6 +333,23 @@ quotesRouter.post("/:id/submit", (req: AuthedRequest, res) => {
     monthly_value,
     net_margin,
   });
+
+  if (!autoApprove) {
+    const roles = rolesWith("decide_quotes");
+    const placeholders = roles.map(() => "?").join(",");
+    const recipients = all<{ name: string; email: string; phone: string }>(
+      `SELECT name, email, phone FROM users WHERE role IN (${placeholders}) AND active = 1`,
+      ...roles,
+    );
+    void notifyQuoteSubmitted({
+      recipients,
+      quoteNumber: quote.number,
+      quoteTitle: quote.title,
+      submittedBy: req.user!.name,
+      quoteId: id,
+    });
+  }
+
   res.json({ quote: findQuote(id), breaches, autoApproved: autoApprove });
 });
 
@@ -396,6 +415,23 @@ quotesRouter.post("/:id/decide", requirePermission("decide_quotes"), (req: Authe
   });
 
   audit(req.user!.id, "quote", id, parsed.data.decision, { note: parsed.data.note });
+
+  const submitter = get<{ name: string; email: string; phone: string }>(
+    "SELECT name, email, phone FROM users WHERE id = ?",
+    quote.created_by,
+  );
+  if (submitter) {
+    void notifyQuoteDecided({
+      recipient: submitter,
+      quoteNumber: quote.number,
+      quoteTitle: quote.title,
+      decision: parsed.data.decision,
+      decidedBy: req.user!.name,
+      note: parsed.data.note,
+      quoteId: id,
+    });
+  }
+
   res.json({ quote: findQuote(id) });
 });
 

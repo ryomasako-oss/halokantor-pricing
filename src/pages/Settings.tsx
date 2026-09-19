@@ -11,7 +11,7 @@ import type { PasswordResetRequest, PricingPolicy, Role, User } from "@shared/ty
 import type { CompanyInfo } from "../components/QuotationDoc";
 
 export function SettingsPage() {
-  const { user, can } = useAuth();
+  const { user, can, refreshUser } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const [policy, setPolicy] = useState<PricingPolicy | null>(null);
@@ -21,6 +21,8 @@ export function SettingsPage() {
   const [password, setPassword] = useState({ current: "", next: "", confirm: "" });
   const [resettingUser, setResettingUser] = useState<User | null>(null);
   const [resetRequests, setResetRequests] = useState<PasswordResetRequest[]>([]);
+  const [phone, setPhone] = useState(user?.phone ?? "");
+  const [savingPhone, setSavingPhone] = useState(false);
 
   const loadUsers = useCallback(() => {
     if (!can("manage_users")) return;
@@ -104,6 +106,19 @@ export function SettingsPage() {
       toast("Kata sandi diperbarui.", "success");
     } catch (e) {
       toast(e instanceof Error ? e.message : "Gagal mengubah kata sandi.", "error");
+    }
+  };
+
+  const savePhone = async () => {
+    setSavingPhone(true);
+    try {
+      await api.patch("/auth/profile", { phone });
+      await refreshUser();
+      toast("Nomor WhatsApp disimpan.", "success");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Gagal menyimpan nomor WhatsApp.", "error");
+    } finally {
+      setSavingPhone(false);
     }
   };
 
@@ -261,6 +276,35 @@ export function SettingsPage() {
             </div>
           </section>
         )}
+
+        <section className="card">
+          <div className="card-head"><h2>Notifikasi WhatsApp</h2></div>
+          <div className="card-body">
+            <p className="muted small" style={{ marginTop: 0, marginBottom: 12 }}>
+              Dipakai untuk mengirim WhatsApp saat ada quotation yang butuh persetujuan Anda, atau saat
+              quotation Anda diputuskan. Kosongkan untuk mematikan notifikasi WhatsApp.
+            </p>
+            <div className="row-wrap">
+              <label className="field" style={{ minWidth: 240 }}>
+                <span>Nomor WhatsApp saya</span>
+                <input
+                  className="input"
+                  placeholder="+62 812-3456-7890"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+              </label>
+              <button
+                className="btn primary"
+                style={{ alignSelf: "flex-end" }}
+                onClick={savePhone}
+                disabled={savingPhone || phone === (user?.phone ?? "")}
+              >
+                {savingPhone ? "Menyimpan…" : "Simpan nomor"}
+              </button>
+            </div>
+          </div>
+        </section>
 
         <section className="card">
           <div className="card-head"><h2>Kata sandi saya</h2></div>

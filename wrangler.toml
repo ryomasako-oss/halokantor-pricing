@@ -20,6 +20,7 @@ run_worker_first = true
 
 [vars]
 NODE_ENV = "production"
+APP_URL = "https://pricing.salvator.co.id"
 
 # Brute-force protection: Workers isolates have no shared in-memory counter,
 # so login/password attempts and the AI assistant are throttled through

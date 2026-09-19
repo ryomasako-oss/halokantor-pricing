@@ -56,7 +56,7 @@ export function loadUser(req: AuthedRequest, _res: Response, next: NextFunction)
   try {
     const payload = jwt.verify(token, secret(), { algorithms: ["HS256"] }) as { sub: string };
     const user = get<User>(
-      "SELECT id, email, name, role, active, created_at FROM users WHERE id = ? AND active = 1",
+      "SELECT id, email, name, role, active, phone, created_at FROM users WHERE id = ? AND active = 1",
       Number(payload.sub),
     );
     if (user) req.user = user;

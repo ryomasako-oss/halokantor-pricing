@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL DEFAULT 'rep',
   active        INTEGER NOT NULL DEFAULT 1,
+  phone         TEXT NOT NULL DEFAULT '',
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -134,6 +135,11 @@ CREATE INDEX IF NOT EXISTS idx_pwreset_email ON password_reset_requests(email);
 // an existing dev database in place (mirrors migrations/0002_consistency.sql).
 try {
   db.exec("ALTER TABLE quotes ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
+} catch (err) {
+  if (!(err instanceof Error) || !err.message.includes("duplicate column name")) throw err;
+}
+try {
+  db.exec("ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''");
 } catch (err) {
   if (!(err instanceof Error) || !err.message.includes("duplicate column name")) throw err;
 }
