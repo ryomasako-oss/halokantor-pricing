@@ -386,7 +386,7 @@ test("an invalid WhatsApp number is rejected with 400", async () => {
   assert.equal(updated.status, 400);
 });
 
-test("submit/decide still succeed with notification env vars unset (RESEND/TWILIO not configured in this test run)", async () => {
+test("submit/decide still succeed with notification env vars unset (GOOGLE_*/TWILIO not configured in this test run)", async () => {
   const rep = repSession;
   const manager = managerSession;
   const quote = await createDraft(rep, [cleanItem()]);

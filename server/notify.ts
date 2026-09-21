@@ -1,10 +1,13 @@
 /* ============================================================
-   Best-effort approval-workflow notifications: email (Resend) and
-   WhatsApp (Twilio). Both are optional — silently no-op when their
-   env vars aren't configured, same pattern as the AI assistant's
-   ANTHROPIC_API_KEY gate. Never throws: a notification failure must
-   never block the submit/decide transaction it's attached to.
+   Best-effort approval-workflow notifications: email (Gmail API,
+   Workspace service account) and WhatsApp (Twilio). Both are
+   optional — silently no-op when their env vars aren't configured,
+   same pattern as the AI assistant's ANTHROPIC_API_KEY gate. Never
+   throws: a notification failure must never block the submit/decide
+   transaction it's attached to.
    ============================================================ */
+
+import { sendGmail } from "./gmail.js";
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -21,16 +24,12 @@ function appUrl(): string {
 }
 
 async function notifyEmail(to: string, subject: string, html: string): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL;
-  if (!apiKey || !from || !to) return;
+  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  const privateKeyPem = process.env.GOOGLE_PRIVATE_KEY;
+  const impersonatedUser = process.env.GOOGLE_SEND_AS_EMAIL;
+  if (!clientEmail || !privateKeyPem || !impersonatedUser || !to) return;
   try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ from, to, subject, html }),
-    });
-    if (!res.ok) console.error("[notify] email failed:", res.status, await res.text().catch(() => ""));
+    await sendGmail({ clientEmail, privateKeyPem, impersonatedUser }, to, subject, html);
   } catch (err) {
     console.error("[notify] email error:", err);
   }

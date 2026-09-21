@@ -14,8 +14,9 @@ export interface Bindings {
   ASSISTANT_LIMITER: RateLimit;
   API_LIMITER: RateLimit;
   APP_URL?: string;
-  RESEND_API_KEY?: string;
-  RESEND_FROM_EMAIL?: string;
+  GOOGLE_SERVICE_ACCOUNT_EMAIL?: string;
+  GOOGLE_PRIVATE_KEY?: string;
+  GOOGLE_SEND_AS_EMAIL?: string;
   TWILIO_ACCOUNT_SID?: string;
   TWILIO_AUTH_TOKEN?: string;
   TWILIO_WHATSAPP_FROM?: string;

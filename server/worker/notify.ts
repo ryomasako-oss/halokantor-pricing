@@ -1,13 +1,15 @@
 /* ============================================================
-   Best-effort approval-workflow notifications: email (Resend) and
-   WhatsApp (Twilio). Async D1/Workers version of server/notify.ts —
-   env is passed in explicitly (Workers bindings, not process.env).
-   Both channels are optional — silently no-op when their vars
-   aren't configured. Never throws: a notification failure must
-   never block the submit/decide transaction it's attached to.
+   Best-effort approval-workflow notifications: email (Gmail API,
+   Workspace service account) and WhatsApp (Twilio). Async D1/Workers
+   version of server/notify.ts — env is passed in explicitly (Workers
+   bindings, not process.env). Both channels are optional — silently
+   no-op when their vars aren't configured. Never throws: a
+   notification failure must never block the submit/decide
+   transaction it's attached to.
    ============================================================ */
 
 import type { Bindings } from "./env";
+import { sendGmail } from "../gmail";
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -24,16 +26,12 @@ function appUrl(env: Bindings): string {
 }
 
 async function notifyEmail(env: Bindings, to: string, subject: string, html: string): Promise<void> {
-  const apiKey = env.RESEND_API_KEY;
-  const from = env.RESEND_FROM_EMAIL;
-  if (!apiKey || !from || !to) return;
+  const clientEmail = env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  const privateKeyPem = env.GOOGLE_PRIVATE_KEY;
+  const impersonatedUser = env.GOOGLE_SEND_AS_EMAIL;
+  if (!clientEmail || !privateKeyPem || !impersonatedUser || !to) return;
   try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ from, to, subject, html }),
-    });
-    if (!res.ok) console.error("[notify] email failed:", res.status, await res.text().catch(() => ""));
+    await sendGmail({ clientEmail, privateKeyPem, impersonatedUser }, to, subject, html);
   } catch (err) {
     console.error("[notify] email error:", err);
   }
