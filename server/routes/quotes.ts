@@ -268,6 +268,16 @@ quotesRouter.post("/:id/revisions", (req: AuthedRequest, res) => {
     res.status(404).json({ error: "Quotation tidak ditemukan." });
     return;
   }
+  if (!canEdit(req, quote.created_by, quote.assigned_to)) {
+    res.status(403).json({ error: "Quotation ini milik pengguna lain." });
+    return;
+  }
+  if (!EDITABLE_STATUSES.includes(quote.status)) {
+    res.status(409).json({
+      error: `Quotation berstatus ${quote.status} terkunci. Buka kembali sebagai revisi baru untuk mengubahnya.`,
+    });
+    return;
+  }
   const note = String(req.body?.note ?? "Snapshot manual").slice(0, 200);
   saveRevision(id, quote.rev_no, quote, req.user!.id, note);
   audit(req.user!.id, "quote", id, "revision_saved", { note });

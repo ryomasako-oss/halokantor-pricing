@@ -723,6 +723,155 @@ scenario("restoring a revision tags it restore-<client>-<n> and keeps the prior 
   };
 });
 
+// ----------- revision authorization regression (security fix) -----------
+
+scenario("creator can save a revision on own draft -> 201 and history records it", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  const saved = await d.api("POST", `/api/quotes/${quote.id}/revisions`, {
+    body: { note: "Snapshot manual" },
+    session: rep,
+  });
+  const detail = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  const hasRevision = detail.json.revisions.some((r: { note: string }) => r.note === "Snapshot manual");
+  const hasAudit = detail.json.audit.some((a: { action: string }) => a.action === "revision_saved");
+  return { status: saved.status, hasRevision, hasAudit };
+});
+
+scenario("a different rep cannot save a revision to another user's draft (403) and creates no revision/audit", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const rep2 = await loginCached(d, "rep2@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  const before = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  const beforeRev = before.json.revisions.length;
+  const beforeAudit = before.json.audit.length;
+  const attempt = await d.api("POST", `/api/quotes/${quote.id}/revisions`, {
+    body: { note: "Hijack attempt" },
+    session: rep2,
+  });
+  const after = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  return {
+    status: attempt.status,
+    revUnchanged: beforeRev === after.json.revisions.length,
+    auditUnchanged: beforeAudit === after.json.audit.length,
+  };
+});
+
+scenario("assignee CAN save a revision after being reassigned", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const rep2 = await loginCached(d, "rep2@test.local", "password123");
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  const rep2User = await d.api("GET", "/api/auth/me", { session: rep2 });
+  await d.api("POST", `/api/quotes/${quote.id}/reassign`, {
+    body: { assigned_to: rep2User.json.user.id, note: "" },
+    session: manager,
+  });
+  const saved = await d.api("POST", `/api/quotes/${quote.id}/revisions`, {
+    body: { note: "Assignee snapshot" },
+    session: rep2,
+  });
+  const detail = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep2 });
+  return {
+    status: saved.status,
+    hasRevision: detail.json.revisions.some((r: { note: string }) => r.note === "Assignee snapshot"),
+  };
+});
+
+scenario("a manager (edit_all_quotes) CAN save a revision to another user's draft", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  const saved = await d.api("POST", `/api/quotes/${quote.id}/revisions`, {
+    body: { note: "Manager snapshot" },
+    session: manager,
+  });
+  const detail = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  return {
+    status: saved.status,
+    hasRevision: detail.json.revisions.some((r: { note: string }) => r.note === "Manager snapshot"),
+  };
+});
+
+scenario("saving a revision on a submitted quote -> 409, no side effects", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  await d.api("POST", `/api/quotes/${quote.id}/submit`, { session: rep });
+  const before = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  const beforeRev = before.json.revisions.length;
+  const beforeAudit = before.json.audit.length;
+  const attempt = await d.api("POST", `/api/quotes/${quote.id}/revisions`, {
+    body: { note: "Should fail locked" },
+    session: rep,
+  });
+  const after = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  return {
+    status: attempt.status,
+    revUnchanged: beforeRev === after.json.revisions.length,
+    auditUnchanged: beforeAudit === after.json.audit.length,
+  };
+});
+
+scenario("saving a revision on an approved quote -> 409 even for a manager (locked)", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const quote = await createDraft(d, manager, [cleanItem()]);
+  await d.api("POST", `/api/quotes/${quote.id}/submit`, { session: manager }); // auto-approves
+  const before = await d.api("GET", `/api/quotes/${quote.id}`, { session: manager });
+  const attempt = await d.api("POST", `/api/quotes/${quote.id}/revisions`, {
+    body: { note: "Should fail approved" },
+    session: manager,
+  });
+  const after = await d.api("GET", `/api/quotes/${quote.id}`, { session: manager });
+  return {
+    status: attempt.status,
+    quoteStatus: before.json.quote.status,
+    revUnchanged: before.json.revisions.length === after.json.revisions.length,
+  };
+});
+
+scenario("saving a revision on a rejected quote is allowed (draft/rejected are editable)", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()], { targetMargin: 0.05, leaderMargin: 0.0 });
+  await d.api("POST", `/api/quotes/${quote.id}/submit`, { session: rep });
+  const decided = await d.api("POST", `/api/quotes/${quote.id}/decide`, {
+    body: { decision: "rejected", note: "Margin terlalu tipis." },
+    session: manager,
+  });
+  const saved = await d.api("POST", `/api/quotes/${quote.id}/revisions`, {
+    body: { note: "Fix after rejection" },
+    session: rep,
+  });
+  const detail = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  return {
+    decideStatus: decided.status,
+    saveStatus: saved.status,
+    hasRevision: detail.json.revisions.some((r: { note: string }) => r.note === "Fix after rejection"),
+  };
+});
+
+scenario("a different rep still cannot save a revision on a rejected quote they do not own (403)", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const rep2 = await loginCached(d, "rep2@test.local", "password123");
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()], { targetMargin: 0.05, leaderMargin: 0.0 });
+  await d.api("POST", `/api/quotes/${quote.id}/submit`, { session: rep });
+  await d.api("POST", `/api/quotes/${quote.id}/decide`, {
+    body: { decision: "rejected", note: "Perlu revisi" },
+    session: manager,
+  });
+  const before = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  const attempt = await d.api("POST", `/api/quotes/${quote.id}/revisions`, {
+    body: { note: "Hijack rejected" },
+    session: rep2,
+  });
+  const after = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  return {
+    status: attempt.status,
+    revUnchanged: before.json.revisions.length === after.json.revisions.length,
+  };
+});
+
 // ---------------------------------------------------------------
 // Run: ONE pair of backends for the whole run (Node caches the
 // dynamically-imported server/db.js module by URL, so "fresh drivers

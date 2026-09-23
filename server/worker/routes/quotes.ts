@@ -259,10 +259,59 @@ quotesRouter.post("/:id/revisions", async (c) => {
   const id = Number(c.req.param("id"));
   const quote = await findQuote(c.env.DB, id);
   if (!quote) return c.json({ error: "Quotation tidak ditemukan." }, 404);
+  if (!canEdit(user, quote.created_by, quote.assigned_to)) {
+    return c.json({ error: "Quotation ini milik pengguna lain." }, 403);
+  }
+  if (!EDITABLE_STATUSES.includes(quote.status)) {
+    return c.json(
+      { error: `Quotation berstatus ${quote.status} terkunci. Buka kembali sebagai revisi baru untuk mengubahnya.` },
+      409,
+    );
+  }
 
   const body = await c.req.json().catch(() => ({}));
   const note = String(body?.note ?? "Snapshot manual").slice(0, 200);
-  await saveRevision(c.env.DB, id, quote.rev_no, quote, user.id, note);
+  const snapshotJson = JSON.stringify(quote);
+  const hasEditAll = hasPermission(user.role, "edit_all_quotes") ? 1 : 0;
+
+  // Enforce the same checks atomically at the database — a concurrent
+  // reassignment or status change between the read above and this write
+  // must not allow a revision to slip through. A conditional INSERT that
+  // re-checks status/ownership inside the statement guarantees the write
+  // only succeeds if the quote is still in an editable state for this user.
+  const result = await run(
+    c.env.DB,
+    `INSERT INTO quote_revisions(quote_id, rev_no, snapshot, note, created_by)
+     SELECT ?, ?, ?, ?, ? WHERE EXISTS (
+       SELECT 1 FROM quotes
+       WHERE id = ? AND status IN ('draft', 'rejected')
+         AND (created_by = ? OR assigned_to = ? OR ? = 1)
+     )`,
+    id,
+    quote.rev_no,
+    snapshotJson,
+    note,
+    user.id,
+    id,
+    user.id,
+    user.id,
+    hasEditAll,
+  );
+
+  if (result.meta.changes === 0) {
+    // The conditional insert affected 0 rows — the quote was concurrently
+    // locked or reassigned. Re-read to return the precise 403/409.
+    const fresh = await findQuote(c.env.DB, id);
+    if (!fresh) return c.json({ error: "Quotation tidak ditemukan." }, 404);
+    if (!canEdit(user, fresh.created_by, fresh.assigned_to)) {
+      return c.json({ error: "Quotation ini milik pengguna lain." }, 403);
+    }
+    return c.json(
+      { error: `Quotation berstatus ${fresh.status} terkunci. Buka kembali sebagai revisi baru untuk mengubahnya.` },
+      409,
+    );
+  }
+
   await audit(c.env.DB, user.id, "quote", id, "revision_saved", { note });
   return c.json({ ok: true }, 201);
 });
