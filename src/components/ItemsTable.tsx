@@ -18,6 +18,8 @@ interface Props {
   onOpenCatalog: () => void;
   /** Pushes a row's COGS/RRP back into the shared catalog master. Omit to hide the action. */
   onPushToCatalog?: (id: string) => void;
+  /** Managed UOM list for the inline satuan picker; empty falls back to a plain label. */
+  uomOptions?: string[];
 }
 
 type SortKey = "lineNo" | "name" | "qty" | "cogs" | "rrp" | "margin" | "value";
@@ -35,6 +37,7 @@ export function ItemsTable({
   onAdd,
   onOpenCatalog,
   onPushToCatalog,
+  uomOptions = [],
 }: Props) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "lineNo", dir: 1 });
@@ -179,9 +182,23 @@ export function ItemsTable({
                           aria-label={`Nama item baris ${r.lineNo}`}
                         />
                       )}
-                      <div className="muted small">
+                      <div className="muted small row-wrap" style={{ gap: 4, alignItems: "center" }}>
                         {r.code ? `${r.code} · ` : ""}
-                        {r.uom}
+                        {readOnly || uomOptions.length === 0 ? (
+                          r.uom
+                        ) : (
+                          <select
+                            className="cell uom"
+                            value={r.uom}
+                            onChange={(e) => onUpdate(r.id, { uom: e.target.value })}
+                            aria-label={`Satuan ${r.name}`}
+                          >
+                            {!uomOptions.includes(r.uom) && r.uom && <option value={r.uom}>{r.uom}</option>}
+                            {uomOptions.map((u) => (
+                              <option key={u} value={u}>{u}</option>
+                            ))}
+                          </select>
+                        )}
                         {r.estCogs ? " · COGS estimasi" : ""}
                       </div>
                     </td>

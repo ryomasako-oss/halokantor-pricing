@@ -132,6 +132,14 @@ CREATE TABLE IF NOT EXISTS password_reset_requests (
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_pwreset_email ON password_reset_requests(email);
+
+CREATE TABLE IF NOT EXISTS uom_options (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+INSERT OR IGNORE INTO uom_options(name)
+  VALUES ('Pcs'), ('Lusin'), ('Box'), ('Rim'), ('Pak'), ('Set'), ('Unit'), ('Roll');
 `);
 
 // The CREATE TABLE above only adds `version` for a fresh database; migrate

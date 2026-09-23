@@ -47,6 +47,27 @@ catalogRouter.get("/", async (c) => {
   return c.json({ items, total: total?.n ?? 0 });
 });
 
+/** Managed UOM list (labels only, no unit-conversion math) — any manager/admin can extend it. */
+catalogRouter.get("/uom", async (c) => {
+  const options = await all<{ id: number; name: string }>(c.env.DB, "SELECT id, name FROM uom_options ORDER BY name");
+  return c.json({ options });
+});
+
+catalogRouter.post("/uom", requirePermission("edit_catalog"), async (c) => {
+  const user = c.get("user")!;
+  const parsed = z
+    .object({ name: z.string().trim().min(1).max(32) })
+    .safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: zodMessage(parsed.error) }, 400);
+
+  const existing = await get<{ id: number }>(c.env.DB, "SELECT id FROM uom_options WHERE name = ?", parsed.data.name);
+  if (existing) return c.json({ error: "Satuan ini sudah ada." }, 409);
+
+  const info = await run(c.env.DB, "INSERT INTO uom_options(name) VALUES(?)", parsed.data.name);
+  await audit(c.env.DB, user.id, "catalog", 0, "uom_added", { name: parsed.data.name });
+  return c.json({ option: { id: Number(info.meta.last_row_id), name: parsed.data.name } }, 201);
+});
+
 catalogRouter.get("/stats", async (c) => {
   const stats = await get<{ total: number; priced: number; withList: number; updated: string | null }>(
     c.env.DB,

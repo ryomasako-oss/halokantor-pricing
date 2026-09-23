@@ -104,6 +104,7 @@ export function QuoteEditorPage() {
   const [tab, setTab] = useState<"items" | "assumptions" | "delivery" | "document" | "history">("items");
   const [modal, setModal] = useState<null | { kind: string; payload?: unknown }>(null);
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+  const [uomOptions, setUomOptions] = useState<string[]>([]);
   const saved = useRef<string>("");
 
   const load = useCallback(async () => {
@@ -142,6 +143,10 @@ export function QuoteEditorPage() {
       })
       .catch(() => undefined);
     api.get<{ clients: Client[] }>("/clients").then((r) => setClients(r.clients)).catch(() => undefined);
+    api
+      .get<{ options: { id: number; name: string }[] }>("/catalog/uom")
+      .then((r) => setUomOptions(r.options.map((o) => o.name)))
+      .catch(() => undefined);
   }, []);
 
   // Warn before leaving with unsaved edits.
@@ -450,6 +455,7 @@ export function QuoteEditorPage() {
                   onAdd={addBlank}
                   onOpenCatalog={() => setModal({ kind: "catalog" })}
                   onPushToCatalog={can("edit_catalog") ? pushToCatalog : undefined}
+                  uomOptions={uomOptions}
                 />
               )}
 

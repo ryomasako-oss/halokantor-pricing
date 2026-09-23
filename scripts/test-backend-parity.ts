@@ -55,6 +55,7 @@ async function makeExpressDriver(): Promise<Driver> {
   const { authRouter } = await import("../server/routes/auth.js");
   const { quotesRouter } = await import("../server/routes/quotes.js");
   const { approvalsRouter } = await import("../server/routes/approvals.js");
+  const { catalogRouter } = await import("../server/routes/catalog.js");
   const { run } = await import("../server/db.js");
 
   const app = express();
@@ -64,6 +65,7 @@ async function makeExpressDriver(): Promise<Driver> {
   app.use("/api/auth", authRouter);
   app.use("/api/quotes", quotesRouter);
   app.use("/api/approvals", approvalsRouter);
+  app.use("/api/catalog", catalogRouter);
 
   let server: Server;
   await new Promise<void>((resolve) => {
@@ -122,6 +124,7 @@ async function makeWorkerDriver(): Promise<Driver> {
     "0003_password_reset_requests.sql",
     "0004_user_phone.sql",
     "0005_reassignment_and_restore.sql",
+    "0006_uom_options.sql",
   ]) {
     sqlite.exec(readFileSync(path.join(migrationsDir, file), "utf8"));
   }
@@ -132,6 +135,7 @@ async function makeWorkerDriver(): Promise<Driver> {
   const { authRouter } = await import("../server/worker/routes/auth.js");
   const { quotesRouter } = await import("../server/worker/routes/quotes.js");
   const { approvalsRouter } = await import("../server/worker/routes/approvals.js");
+  const { catalogRouter } = await import("../server/worker/routes/catalog.js");
   const { run } = await import("../server/db.d1.js");
 
   const app = new Hono();
@@ -139,6 +143,7 @@ async function makeWorkerDriver(): Promise<Driver> {
   app.route("/api/auth", authRouter);
   app.route("/api/quotes", quotesRouter);
   app.route("/api/approvals", approvalsRouter);
+  app.route("/api/catalog", catalogRouter);
 
   const env = {
     DB: db,
@@ -647,6 +652,33 @@ scenario("editing a quote (e.g. fixing it after a rejection) is recorded in the 
   const detail = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
   const editEntry = detail.json.audit.find((a: { action: string }) => a.action === "edited");
   return { hasEditAuditEntry: Boolean(editEntry), editedByManager: editEntry?.actor_name === "Manager One" };
+});
+
+scenario("UOM list is seeded and includes Pcs/Lusin", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const listed = await d.api("GET", "/api/catalog/uom", { session: rep });
+  const names = (listed.json.options as { name: string }[]).map((o) => o.name).sort();
+  return { status: listed.status, hasPcs: names.includes("Pcs"), hasLusin: names.includes("Lusin") };
+});
+
+scenario("a rep cannot add a new UOM (403)", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const added = await d.api("POST", "/api/catalog/uom", { body: { name: "Krat" }, session: rep });
+  return { status: added.status };
+});
+
+scenario("a manager can add a new UOM, and it then appears in the list", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const added = await d.api("POST", "/api/catalog/uom", { body: { name: "Karung" }, session: manager });
+  const listed = await d.api("GET", "/api/catalog/uom", { session: manager });
+  const names = (listed.json.options as { name: string }[]).map((o) => o.name);
+  return { addStatus: added.status, nowInList: names.includes("Karung") };
+});
+
+scenario("adding a duplicate UOM name is rejected -> 409", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const dup = await d.api("POST", "/api/catalog/uom", { body: { name: "Pcs" }, session: manager });
+  return { status: dup.status };
 });
 
 scenario('"mine" filter includes quotes reassigned to the viewer, not just ones they created', async (d) => {

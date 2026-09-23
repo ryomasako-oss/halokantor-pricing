@@ -45,6 +45,27 @@ catalogRouter.get("/", (req, res) => {
   res.json({ items, total: total?.n ?? 0 });
 });
 
+/** Managed UOM list (labels only, no unit-conversion math) — any manager/admin can extend it. */
+catalogRouter.get("/uom", (_req, res) => {
+  res.json({ options: all<{ id: number; name: string }>("SELECT id, name FROM uom_options ORDER BY name") });
+});
+
+catalogRouter.post("/uom", requirePermission("edit_catalog"), (req: AuthedRequest, res) => {
+  const parsed = z.object({ name: z.string().trim().min(1).max(32) }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: zodMessage(parsed.error) });
+    return;
+  }
+  const existing = get<{ id: number }>("SELECT id FROM uom_options WHERE name = ?", parsed.data.name);
+  if (existing) {
+    res.status(409).json({ error: "Satuan ini sudah ada." });
+    return;
+  }
+  const info = run("INSERT INTO uom_options(name) VALUES(?)", parsed.data.name);
+  audit(req.user!.id, "catalog", 0, "uom_added", { name: parsed.data.name });
+  res.status(201).json({ option: { id: Number(info.lastInsertRowid), name: parsed.data.name } });
+});
+
 catalogRouter.get("/stats", (_req, res) => {
   const stats = get<{ total: number; priced: number; withList: number; updated: string | null }>(
     `SELECT COUNT(*) AS total,

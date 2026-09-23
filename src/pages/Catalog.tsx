@@ -31,6 +31,9 @@ export function CatalogPage() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<null | "inventory" | "master" | "full" | "fullMerge">(null);
   const [editing, setEditing] = useState<EditingItem | null>(null);
+  const [uomOptions, setUomOptions] = useState<string[]>([]);
+  const [addingUom, setAddingUom] = useState(false);
+  const [newUom, setNewUom] = useState("");
   const PAGE = 50;
 
   const load = useCallback(() => {
@@ -53,6 +56,17 @@ export function CatalogPage() {
     api.get<{ stats: Stats }>("/catalog/stats").then((r) => setStats(r.stats)).catch(() => undefined);
   }, [query, page, sortBy, sortDir, toast]);
 
+  const openEditing = (item: EditingItem) => {
+    setAddingUom(false);
+    setNewUom("");
+    setEditing(item);
+  };
+  const closeEditing = () => {
+    setAddingUom(false);
+    setNewUom("");
+    setEditing(null);
+  };
+
   const toggleSort = (field: "name" | "stock" | "cogs" | "list_price") => {
     setPage(0);
     setSortDir(sortBy === field && sortDir === "asc" ? "desc" : "asc");
@@ -63,6 +77,17 @@ export function CatalogPage() {
     const t = setTimeout(load, 220);
     return () => clearTimeout(t);
   }, [load]);
+
+  const loadUom = useCallback(() => {
+    api
+      .get<{ options: { id: number; name: string }[] }>("/catalog/uom")
+      .then((r) => setUomOptions(r.options.map((o) => o.name)))
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    loadUom();
+  }, [loadUom]);
 
   const pages = Math.ceil(total / PAGE);
 
@@ -78,7 +103,7 @@ export function CatalogPage() {
         </div>
         {can("import_catalog") && (
           <div className="row-wrap">
-            <button className="btn" onClick={() => setEditing({ ...EMPTY_ITEM })}>
+            <button className="btn" onClick={() => openEditing({ ...EMPTY_ITEM })}>
               <Icon name="plus" size={15} /> Tambah barang
             </button>
             <button
@@ -232,7 +257,7 @@ export function CatalogPage() {
                       <td className="num muted">{grp(item.stock)}</td>
                       {can("edit_catalog") && (
                         <td>
-                          <button className="btn small ghost" onClick={() => setEditing({ ...item })}>Ubah</button>
+                          <button className="btn small ghost" onClick={() => openEditing({ ...item })}>Ubah</button>
                         </td>
                       )}
                     </tr>
@@ -362,10 +387,10 @@ export function CatalogPage() {
         <Modal
           title={editing.id ? "Ubah data barang" : "Tambah barang"}
           sub={editing.id ? editing.code : undefined}
-          onClose={() => setEditing(null)}
+          onClose={closeEditing}
           footer={
             <>
-              <button className="btn ghost" onClick={() => setEditing(null)}>Batal</button>
+              <button className="btn ghost" onClick={closeEditing}>Batal</button>
               <button
                 className="btn primary"
                 disabled={!editing.name.trim() || (!editing.id && !editing.code.trim())}
@@ -397,7 +422,7 @@ export function CatalogPage() {
                       });
                       toast("Barang ditambahkan.", "success");
                     }
-                    setEditing(null);
+                    closeEditing();
                     load();
                   } catch (e) {
                     toast(e instanceof Error ? e.message : "Gagal menyimpan.", "error");
@@ -432,11 +457,56 @@ export function CatalogPage() {
             <div className="field-grid">
               <label className="field">
                 <span>Satuan</span>
-                <input
-                  className="input"
-                  value={editing.uom}
-                  onChange={(e) => setEditing({ ...editing, uom: e.target.value })}
-                />
+                {addingUom ? (
+                  <div className="row-wrap" style={{ gap: 6 }}>
+                    <input
+                      className="input"
+                      autoFocus
+                      placeholder="Satuan baru, misal Dus"
+                      value={newUom}
+                      onChange={(e) => setNewUom(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn small"
+                      disabled={!newUom.trim()}
+                      onClick={async () => {
+                        try {
+                          const name = newUom.trim();
+                          await api.post("/catalog/uom", { name });
+                          loadUom();
+                          setEditing({ ...editing, uom: name });
+                          setNewUom("");
+                          setAddingUom(false);
+                        } catch (e) {
+                          toast(e instanceof Error ? e.message : "Gagal menambah satuan.", "error");
+                        }
+                      }}
+                    >
+                      Tambah
+                    </button>
+                    <button type="button" className="btn small ghost" onClick={() => { setAddingUom(false); setNewUom(""); }}>
+                      Batal
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    className="select"
+                    value={editing.uom}
+                    onChange={(e) => {
+                      if (e.target.value === "__new__") { setAddingUom(true); return; }
+                      setEditing({ ...editing, uom: e.target.value });
+                    }}
+                  >
+                    {!uomOptions.includes(editing.uom) && editing.uom && (
+                      <option value={editing.uom}>{editing.uom}</option>
+                    )}
+                    {uomOptions.map((u) => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                    <option value="__new__">+ Tambah satuan baru…</option>
+                  </select>
+                )}
               </label>
               <label className="field">
                 <span>COGS per unit</span>
