@@ -389,7 +389,7 @@ export function QuoteEditorPage() {
           <WorkflowButtons
             quote={quote}
             canManage={can("decide_quotes")}
-            isOwner={quote.created_by === user?.id}
+            isResponsible={quote.created_by === user?.id || quote.assigned_to === user?.id}
             blocked={blocked.length}
             onSubmit={() => setModal({ kind: "submit" })}
             onDecide={() => setModal({ kind: "decide" })}
@@ -873,18 +873,18 @@ export function QuoteEditorPage() {
 /* ---------------- workflow buttons ---------------- */
 
 function WorkflowButtons({
-  quote, canManage, isOwner, blocked, onSubmit, onDecide, onReopen, onStatus,
+  quote, canManage, isResponsible, blocked, onSubmit, onDecide, onReopen, onStatus,
 }: {
   quote: Quote;
   canManage: boolean;
-  isOwner: boolean;
+  isResponsible: boolean;
   blocked: number;
   onSubmit: () => void;
   onDecide: () => void;
   onReopen: () => void;
   onStatus: (s: string) => void;
 }) {
-  const mine = isOwner || canManage;
+  const mine = isResponsible || canManage;
   switch (quote.status) {
     case "draft":
     case "rejected":
