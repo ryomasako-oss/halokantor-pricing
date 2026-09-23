@@ -17,7 +17,6 @@ import {
 } from "../quoteService.js";
 import { isWithinPolicy } from "../../shared/policy.js";
 import { DEFAULT_ASSUMPTIONS, DEFAULT_REGIONS } from "../../shared/engine.js";
-import { rolesWith } from "../../shared/permissions.js";
 import { notifyQuoteDecided, notifyQuoteSubmitted } from "../notify.js";
 import type { Client, QuoteSnapshot, QuoteStatus } from "../../shared/types.js";
 
@@ -335,11 +334,12 @@ quotesRouter.post("/:id/submit", (req: AuthedRequest, res) => {
   });
 
   if (!autoApprove) {
-    const roles = rolesWith("decide_quotes");
-    const placeholders = roles.map(() => "?").join(",");
+    // Only the actual decision-maker (manager) gets the "needs your action"
+    // email — admin still has decide_quotes for coverage/escalation, but
+    // routing this to every admin as well just spams the people who are
+    // meant to be monitoring, not approving on every quote.
     const recipients = all<{ name: string; email: string; phone: string }>(
-      `SELECT name, email, phone FROM users WHERE role IN (${placeholders}) AND active = 1`,
-      ...roles,
+      `SELECT name, email, phone FROM users WHERE role = 'manager' AND active = 1`,
     );
     void notifyQuoteSubmitted({
       recipients,

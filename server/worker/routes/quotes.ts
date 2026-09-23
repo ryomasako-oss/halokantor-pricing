@@ -17,7 +17,6 @@ import {
 } from "../quoteService";
 import { isWithinPolicy } from "../../../shared/policy";
 import { DEFAULT_ASSUMPTIONS, DEFAULT_REGIONS } from "../../../shared/engine";
-import { rolesWith } from "../../../shared/permissions";
 import { notifyQuoteDecided, notifyQuoteSubmitted } from "../notify";
 import type { Client, QuoteSnapshot, QuoteStatus, User } from "../../../shared/types";
 import type { Env } from "../env";
@@ -333,12 +332,13 @@ quotesRouter.post("/:id/submit", async (c) => {
   });
 
   if (!autoApprove) {
-    const roles = rolesWith("decide_quotes");
-    const placeholders = roles.map(() => "?").join(",");
+    // Only the actual decision-maker (manager) gets the "needs your action"
+    // email — admin still has decide_quotes for coverage/escalation, but
+    // routing this to every admin as well just spams the people who are
+    // meant to be monitoring, not approving on every quote.
     const recipients = await all<{ name: string; email: string; phone: string }>(
       c.env.DB,
-      `SELECT name, email, phone FROM users WHERE role IN (${placeholders}) AND active = 1`,
-      ...roles,
+      `SELECT name, email, phone FROM users WHERE role = 'manager' AND active = 1`,
     );
     // waitUntil: the response below returns before this settles, and Workers
     // don't keep running background work past that point unless extended.
