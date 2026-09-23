@@ -447,6 +447,7 @@ input[type=checkbox] { accent-color: var(--navy); width: 17px; height: 17px; fle
 .status-sent { background: var(--s1-bg); color: var(--s1); }
 .status-won { background: var(--ok); color: #fff; }
 .status-lost { background: var(--soft); color: var(--muted); }
+.status-completed { background: var(--navy); color: #fff; }
 
 /* ---------------- assistant ---------------- */
 

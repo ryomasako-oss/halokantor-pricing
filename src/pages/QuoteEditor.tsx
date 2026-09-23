@@ -81,6 +81,7 @@ const ACTION_LABEL: Record<string, string> = {
   status_sent: "Ditandai terkirim ke klien",
   status_won: "Ditandai menang",
   status_lost: "Ditandai kalah",
+  status_completed: "Ditandai selesai",
   deleted: "Dihapus",
 };
 
@@ -616,7 +617,7 @@ export function QuoteEditorPage() {
                       clientName={clientName}
                       clientAddress={clientRecord?.address}
                       number={quote.number}
-                      draft={quote.status !== "approved" && quote.status !== "sent" && quote.status !== "won"}
+                      draft={quote.status !== "approved" && quote.status !== "sent" && quote.status !== "won" && quote.status !== "completed"}
                     />
                   )}
                 </div>
@@ -752,7 +753,7 @@ export function QuoteEditorPage() {
                 const { downloadQuotationPdf } = await import("../export/pdf");
                 downloadQuotationPdf({
                   ...exportInput, company, clientAddress: clientRecord?.address,
-                  draft: quote.status !== "approved" && quote.status !== "sent" && quote.status !== "won",
+                  draft: quote.status !== "approved" && quote.status !== "sent" && quote.status !== "won" && quote.status !== "completed",
                 });
                 setModal(null);
               }}
@@ -916,6 +917,15 @@ function WorkflowButtons({
         <>
           <button className="btn success" onClick={() => onStatus("won")}>Menang</button>
           <button className="btn" onClick={() => onStatus("lost")}>Kalah</button>
+          <button className="btn ghost" onClick={onReopen}>Buka revisi baru</button>
+        </>
+      ) : null;
+    case "won":
+      return mine ? (
+        <>
+          <button className="btn" onClick={() => onStatus("completed")}>
+            <Icon name="check" size={15} /> Tandai selesai
+          </button>
           <button className="btn ghost" onClick={onReopen}>Buka revisi baru</button>
         </>
       ) : null;

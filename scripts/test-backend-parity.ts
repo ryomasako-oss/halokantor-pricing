@@ -564,6 +564,25 @@ scenario("reassigning to the already-current assignee is a no-op (no duplicate h
   };
 });
 
+scenario("won -> completed is an allowed manual status move", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const quote = await createDraft(d, manager, [cleanItem()]);
+  await d.api("POST", `/api/quotes/${quote.id}/submit`, { session: manager }); // manager auto-approves
+  await d.api("POST", `/api/quotes/${quote.id}/status`, { body: { status: "sent" }, session: manager });
+  await d.api("POST", `/api/quotes/${quote.id}/status`, { body: { status: "won" }, session: manager });
+  const completed = await d.api("POST", `/api/quotes/${quote.id}/status`, { body: { status: "completed" }, session: manager });
+  return { status: completed.status, quoteStatus: completed.json.quote?.status };
+});
+
+scenario("sent -> completed is rejected (must pass through won first) -> 409", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const quote = await createDraft(d, manager, [cleanItem()]);
+  await d.api("POST", `/api/quotes/${quote.id}/submit`, { session: manager });
+  await d.api("POST", `/api/quotes/${quote.id}/status`, { body: { status: "sent" }, session: manager });
+  const skip = await d.api("POST", `/api/quotes/${quote.id}/status`, { body: { status: "completed" }, session: manager });
+  return { status: skip.status };
+});
+
 scenario('"mine" filter includes quotes reassigned to the viewer, not just ones they created', async (d) => {
   const manager = await loginCached(d, "manager@test.local", "password123");
   const rep = await loginCached(d, "rep@test.local", "password123");

@@ -23,6 +23,7 @@ const STATUS_LABEL: Record<QuoteStatus, string> = {
   sent: "Terkirim ke klien",
   won: "Menang",
   lost: "Kalah",
+  completed: "Selesai",
 };
 
 export function StatusChip({ status }: { status: QuoteStatus }) {

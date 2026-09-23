@@ -152,7 +152,14 @@ export async function saveRevision(
 }
 
 /** Statuses whose content is frozen until the quote is explicitly reopened. */
-export const LOCKED_STATUSES: QuoteStatus[] = ["submitted", "approved", "sent", "won", "lost"];
+export const LOCKED_STATUSES: QuoteStatus[] = [
+  "submitted",
+  "approved",
+  "sent",
+  "won",
+  "lost",
+  "completed",
+];
 
 export const EDITABLE_STATUSES: QuoteStatus[] = ["draft", "rejected"];
 
@@ -160,4 +167,5 @@ export const EDITABLE_STATUSES: QuoteStatus[] = ["draft", "rejected"];
 export const STATUS_FLOW: Partial<Record<QuoteStatus, QuoteStatus[]>> = {
   approved: ["sent"],
   sent: ["won", "lost"],
+  won: ["completed"],
 };

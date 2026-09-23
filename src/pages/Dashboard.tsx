@@ -32,6 +32,7 @@ const FILTERS: { key: string; label: string }[] = [
   { key: "sent", label: "Terkirim" },
   { key: "won", label: "Menang" },
   { key: "lost", label: "Kalah" },
+  { key: "completed", label: "Selesai" },
 ];
 
 export function DashboardPage() {

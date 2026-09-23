@@ -186,7 +186,8 @@ export type QuoteStatus =
   | "rejected"
   | "sent"
   | "won"
-  | "lost";
+  | "lost"
+  | "completed";
 
 export interface QuoteMeta {
   quoteNo: string;
