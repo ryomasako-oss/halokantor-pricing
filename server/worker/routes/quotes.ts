@@ -600,7 +600,7 @@ quotesRouter.post("/:id/reopen", async (c) => {
   if (quote.status === "draft") return c.json({ error: "Quotation sudah berstatus draft." }, 409);
 
   const nextRev = quote.rev_no + 1;
-  await batch(c.env.DB, [
+  const statements = [
     stmt(
       c.env.DB,
       "INSERT INTO quote_revisions(quote_id, rev_no, snapshot, note, created_by) VALUES(?, ?, ?, ?, ?)",
@@ -617,7 +617,14 @@ quotesRouter.post("/:id/reopen", async (c) => {
       nextRev,
       id,
     ),
-  ]);
+  ];
+  if (quote.status === "submitted") {
+    // Reopening a quote that's still awaiting a decision voids that
+    // request — otherwise it lingers forever in the manager's pending
+    // queue, pointing at content that's already back in draft.
+    statements.push(stmt(c.env.DB, "DELETE FROM approvals WHERE quote_id = ? AND decision = 'pending'", id));
+  }
+  await batch(c.env.DB, statements);
   await audit(c.env.DB, user.id, "quote", id, "reopened", { rev_no: nextRev });
   return c.json({ quote: await findQuote(c.env.DB, id) });
 });

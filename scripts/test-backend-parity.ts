@@ -583,6 +583,38 @@ scenario("sent -> completed is rejected (must pass through won first) -> 409", a
   return { status: skip.status };
 });
 
+scenario("owner can reopen their own submitted quote directly, no manager decision needed", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  await d.api("POST", `/api/quotes/${quote.id}/submit`, { session: rep });
+  const reopened = await d.api("POST", `/api/quotes/${quote.id}/reopen`, { session: rep });
+  return { status: reopened.status, quoteStatus: reopened.json.quote?.status };
+});
+
+scenario("a different rep still cannot reopen someone else's submitted quote (403)", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const rep2 = await loginCached(d, "rep2@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  await d.api("POST", `/api/quotes/${quote.id}/submit`, { session: rep });
+  const reopened = await d.api("POST", `/api/quotes/${quote.id}/reopen`, { session: rep2 });
+  return { status: reopened.status };
+});
+
+scenario("reopening a submitted quote clears it from the manager's pending-approval queue", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()], { targetMargin: 0.05, leaderMargin: 0.0 }); // breaches policy -> stays pending
+  await d.api("POST", `/api/quotes/${quote.id}/submit`, { session: rep });
+  const beforeQueue = await d.api("GET", "/api/approvals?decision=pending", { session: manager });
+  await d.api("POST", `/api/quotes/${quote.id}/reopen`, { session: rep });
+  const afterQueue = await d.api("GET", "/api/approvals?decision=pending", { session: manager });
+  const inQueue = (rows: { quote_id: number }[]) => rows.some((r) => r.quote_id === quote.id);
+  return {
+    wasQueuedBefore: inQueue(beforeQueue.json.approvals),
+    stillQueuedAfter: inQueue(afterQueue.json.approvals),
+  };
+});
+
 scenario('"mine" filter includes quotes reassigned to the viewer, not just ones they created', async (d) => {
   const manager = await loginCached(d, "manager@test.local", "password123");
   const rep = await loginCached(d, "rep@test.local", "password123");

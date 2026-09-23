@@ -844,8 +844,10 @@ export function QuoteEditorPage() {
           message={
             <>
               <p>
-                Versi {quote.rev_no} yang sudah diputuskan tetap tersimpan di riwayat. Quotation
-                kembali ke status draft dan harus diajukan ulang setelah diubah.
+                {quote.status === "submitted"
+                  ? "Quotation ini masih menunggu persetujuan — membuka revisi baru akan membatalkan permintaan persetujuan itu."
+                  : `Versi ${quote.rev_no} yang sudah diputuskan tetap tersimpan di riwayat.`}{" "}
+                Quotation kembali ke status draft dan harus diajukan ulang setelah diubah.
               </p>
             </>
           }
@@ -896,12 +898,18 @@ function WorkflowButtons({
         </button>
       ) : null;
     case "submitted":
-      return canManage ? (
-        <button className="btn success" onClick={onDecide}>
-          <Icon name="shield" size={15} /> Putuskan
-        </button>
-      ) : (
-        <span className="pill warn"><Icon name="clock" size={13} /> Menunggu manajer</span>
+      if (!mine) {
+        return <span className="pill warn"><Icon name="clock" size={13} /> Menunggu manajer</span>;
+      }
+      return (
+        <>
+          {canManage && (
+            <button className="btn success" onClick={onDecide}>
+              <Icon name="shield" size={15} /> Putuskan
+            </button>
+          )}
+          <button className="btn ghost" onClick={onReopen}>Buka revisi baru</button>
+        </>
       );
     case "approved":
       return mine ? (

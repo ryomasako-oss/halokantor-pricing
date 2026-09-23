@@ -595,6 +595,12 @@ quotesRouter.post("/:id/reopen", (req: AuthedRequest, res) => {
       nextRev,
       id,
     );
+    if (quote.status === "submitted") {
+      // Reopening a quote that's still awaiting a decision voids that
+      // request — otherwise it lingers forever in the manager's pending
+      // queue, pointing at content that's already back in draft.
+      run("DELETE FROM approvals WHERE quote_id = ? AND decision = 'pending'", id);
+    }
   });
   audit(req.user!.id, "quote", id, "reopened", { rev_no: nextRev });
   res.json({ quote: findQuote(id) });
