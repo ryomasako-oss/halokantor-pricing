@@ -137,3 +137,33 @@ export async function notifyQuoteReassigned(params: {
     `\n${link}`;
   await Promise.all([notifyEmail(params.recipient.email, subject, html), notifyWhatsApp(params.recipient.phone, wa)]);
 }
+
+/** A quote moved off someone's plate — either handed to someone else or unassigned entirely. */
+export async function notifyQuoteReassignedAway(params: {
+  recipient: Recipient;
+  quoteNumber: string;
+  quoteTitle: string;
+  reassignedBy: string;
+  newOwnerName: string | null;
+  note: string;
+  quoteId: number;
+}): Promise<void> {
+  const link = `${appUrl()}/quotes/${params.quoteId}`;
+  const number = escapeHtml(params.quoteNumber);
+  const title = escapeHtml(params.quoteTitle);
+  const by = escapeHtml(params.reassignedBy);
+  const note = escapeHtml(params.note);
+  const verb = params.newOwnerName
+    ? `dialihkan ke ${escapeHtml(params.newOwnerName)}`
+    : "dilepas dari penugasan Anda";
+  const subject = `Quotation ${params.quoteNumber} ${params.newOwnerName ? "dialihkan" : "dilepas dari penugasan Anda"}`;
+  const html =
+    `<p>Quotation <strong>${number}</strong> (${title}) telah ${verb} oleh ${by}.</p>` +
+    (note ? `<p>Catatan: ${note}</p>` : "") +
+    `<p><a href="${link}">Buka quotation</a></p>`;
+  const wa =
+    `Quotation ${params.quoteNumber} (${params.quoteTitle}) ${verb} oleh ${params.reassignedBy}.` +
+    (params.note ? ` Catatan: ${params.note}` : "") +
+    `\n${link}`;
+  await Promise.all([notifyEmail(params.recipient.email, subject, html), notifyWhatsApp(params.recipient.phone, wa)]);
+}

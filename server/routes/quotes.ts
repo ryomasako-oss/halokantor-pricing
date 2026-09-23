@@ -17,7 +17,12 @@ import {
 } from "../quoteService.js";
 import { isWithinPolicy } from "../../shared/policy.js";
 import { DEFAULT_ASSUMPTIONS, DEFAULT_REGIONS } from "../../shared/engine.js";
-import { notifyQuoteDecided, notifyQuoteReassigned, notifyQuoteSubmitted } from "../notify.js";
+import {
+  notifyQuoteDecided,
+  notifyQuoteReassigned,
+  notifyQuoteReassignedAway,
+  notifyQuoteSubmitted,
+} from "../notify.js";
 import type { Client, QuoteSnapshot, QuoteStatus, User } from "../../shared/types.js";
 
 export const quotesRouter = Router();
@@ -328,6 +333,12 @@ quotesRouter.post("/:id/reassign", requirePermission("decide_quotes"), (req: Aut
     res.status(400).json({ error: zodMessage(parsed.error) });
     return;
   }
+  if (parsed.data.assigned_to === quote.assigned_to) {
+    // No actual change (e.g. re-picking the current assignee) — skip the
+    // history entry and notifications so they aren't sent for nothing.
+    res.json({ quote });
+    return;
+  }
   let target: User | undefined;
   if (parsed.data.assigned_to !== null) {
     target = get<User>("SELECT * FROM users WHERE id = ? AND active = 1", parsed.data.assigned_to);
@@ -336,14 +347,42 @@ quotesRouter.post("/:id/reassign", requirePermission("decide_quotes"), (req: Aut
       return;
     }
   }
-  run("UPDATE quotes SET assigned_to = ?, updated_at = datetime('now') WHERE id = ?", parsed.data.assigned_to, id);
+  // Whoever was responsible before this change — the previous assignee, or
+  // the creator if no one had been assigned yet — so they're told the quote
+  // moved off their plate, not just the person receiving it.
+  const previousOwnerId = quote.assigned_to ?? quote.created_by;
+  const previousOwner =
+    previousOwnerId !== req.user!.id && previousOwnerId !== target?.id
+      ? get<User>("SELECT * FROM users WHERE id = ?", previousOwnerId)
+      : undefined;
+
+  const historyNote = target
+    ? `Dialihkan ke ${target.name}${parsed.data.note ? `: ${parsed.data.note}` : ""}`
+    : `Penugasan dilepas${parsed.data.note ? `: ${parsed.data.note}` : ""}`;
+
+  tx(() => {
+    run("UPDATE quotes SET assigned_to = ?, updated_at = datetime('now') WHERE id = ?", parsed.data.assigned_to, id);
+    saveRevision(id, quote.rev_no, quote, req.user!.id, historyNote);
+  });
   audit(req.user!.id, "quote", id, "reassigned", { to: parsed.data.assigned_to, note: parsed.data.note });
+
   if (target) {
     void notifyQuoteReassigned({
       recipient: { name: target.name, email: target.email, phone: target.phone },
       quoteNumber: quote.number,
       quoteTitle: quote.title,
       reassignedBy: req.user!.name,
+      note: parsed.data.note,
+      quoteId: id,
+    });
+  }
+  if (previousOwner) {
+    void notifyQuoteReassignedAway({
+      recipient: { name: previousOwner.name, email: previousOwner.email, phone: previousOwner.phone },
+      quoteNumber: quote.number,
+      quoteTitle: quote.title,
+      reassignedBy: req.user!.name,
+      newOwnerName: target?.name ?? null,
       note: parsed.data.note,
       quoteId: id,
     });

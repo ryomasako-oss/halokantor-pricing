@@ -17,7 +17,12 @@ import {
 } from "../quoteService";
 import { isWithinPolicy } from "../../../shared/policy";
 import { DEFAULT_ASSUMPTIONS, DEFAULT_REGIONS } from "../../../shared/engine";
-import { notifyQuoteDecided, notifyQuoteReassigned, notifyQuoteSubmitted } from "../notify";
+import {
+  notifyQuoteDecided,
+  notifyQuoteReassigned,
+  notifyQuoteReassignedAway,
+  notifyQuoteSubmitted,
+} from "../notify";
 import type { Client, QuoteSnapshot, QuoteStatus, User } from "../../../shared/types";
 import type { Env } from "../env";
 
@@ -331,18 +336,48 @@ quotesRouter.post("/:id/reassign", requirePermission("decide_quotes"), async (c)
     .safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: zodMessage(parsed.error) }, 400);
 
+  if (parsed.data.assigned_to === quote.assigned_to) {
+    // No actual change (e.g. re-picking the current assignee) — skip the
+    // history entry and notifications so they aren't sent for nothing.
+    return c.json({ quote });
+  }
   let target: User | undefined;
   if (parsed.data.assigned_to !== null) {
     target = await get<User>(c.env.DB, "SELECT * FROM users WHERE id = ? AND active = 1", parsed.data.assigned_to);
     if (!target) return c.json({ error: "Pengguna tujuan tidak ditemukan atau tidak aktif." }, 400);
   }
-  await run(
-    c.env.DB,
-    "UPDATE quotes SET assigned_to = ?, updated_at = datetime('now') WHERE id = ?",
-    parsed.data.assigned_to,
-    id,
-  );
+  // Whoever was responsible before this change — the previous assignee, or
+  // the creator if no one had been assigned yet — so they're told the quote
+  // moved off their plate, not just the person receiving it.
+  const previousOwnerId = quote.assigned_to ?? quote.created_by;
+  const previousOwner =
+    previousOwnerId !== user.id && previousOwnerId !== target?.id
+      ? await get<User>(c.env.DB, "SELECT * FROM users WHERE id = ?", previousOwnerId)
+      : undefined;
+
+  const historyNote = target
+    ? `Dialihkan ke ${target.name}${parsed.data.note ? `: ${parsed.data.note}` : ""}`
+    : `Penugasan dilepas${parsed.data.note ? `: ${parsed.data.note}` : ""}`;
+
+  await batch(c.env.DB, [
+    stmt(
+      c.env.DB,
+      "UPDATE quotes SET assigned_to = ?, updated_at = datetime('now') WHERE id = ?",
+      parsed.data.assigned_to,
+      id,
+    ),
+    stmt(
+      c.env.DB,
+      "INSERT INTO quote_revisions(quote_id, rev_no, snapshot, note, created_by) VALUES(?, ?, ?, ?, ?)",
+      id,
+      quote.rev_no,
+      JSON.stringify(quote),
+      historyNote,
+      user.id,
+    ),
+  ]);
   await audit(c.env.DB, user.id, "quote", id, "reassigned", { to: parsed.data.assigned_to, note: parsed.data.note });
+
   if (target) {
     c.executionCtx.waitUntil(
       notifyQuoteReassigned(c.env, {
@@ -350,6 +385,19 @@ quotesRouter.post("/:id/reassign", requirePermission("decide_quotes"), async (c)
         quoteNumber: quote.number,
         quoteTitle: quote.title,
         reassignedBy: user.name,
+        note: parsed.data.note,
+        quoteId: id,
+      }),
+    );
+  }
+  if (previousOwner) {
+    c.executionCtx.waitUntil(
+      notifyQuoteReassignedAway(c.env, {
+        recipient: { name: previousOwner.name, email: previousOwner.email, phone: previousOwner.phone },
+        quoteNumber: quote.number,
+        quoteTitle: quote.title,
+        reassignedBy: user.name,
+        newOwnerName: target?.name ?? null,
         note: parsed.data.note,
         quoteId: id,
       }),

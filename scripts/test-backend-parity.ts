@@ -520,6 +520,50 @@ scenario("manager reassigns a draft, the new assignee can then edit it", async (
   };
 });
 
+scenario("reassigning a quote records a history entry naming the new owner", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const rep2 = await loginCached(d, "rep2@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  const rep2User = await d.api("GET", "/api/auth/me", { session: rep2 });
+  await d.api("POST", `/api/quotes/${quote.id}/reassign`, {
+    body: { assigned_to: rep2User.json.user.id, note: "Cakupan cuti" },
+    session: manager,
+  });
+  const detail = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  const notes = detail.json.revisions.map((r: { note: string }) => r.note);
+  return { hasHandoffEntry: notes.some((n: string) => n === "Dialihkan ke Rep Two: Cakupan cuti") };
+});
+
+scenario("unassigning a quote records a distinct history entry", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const rep2 = await loginCached(d, "rep2@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  const rep2User = await d.api("GET", "/api/auth/me", { session: rep2 });
+  await d.api("POST", `/api/quotes/${quote.id}/reassign`, { body: { assigned_to: rep2User.json.user.id, note: "" }, session: manager });
+  await d.api("POST", `/api/quotes/${quote.id}/reassign`, { body: { assigned_to: null, note: "" }, session: manager });
+  const detail = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  const notes = detail.json.revisions.map((r: { note: string }) => r.note);
+  return { hasUnassignEntry: notes.includes("Penugasan dilepas") };
+});
+
+scenario("reassigning to the already-current assignee is a no-op (no duplicate history entry)", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const rep2 = await loginCached(d, "rep2@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  const rep2User = await d.api("GET", "/api/auth/me", { session: rep2 });
+  await d.api("POST", `/api/quotes/${quote.id}/reassign`, { body: { assigned_to: rep2User.json.user.id, note: "" }, session: manager });
+  const before = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  const repeat = await d.api("POST", `/api/quotes/${quote.id}/reassign`, { body: { assigned_to: rep2User.json.user.id, note: "" }, session: manager });
+  const after = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  return {
+    repeatStatus: repeat.status,
+    revisionCountUnchanged: before.json.revisions.length === after.json.revisions.length,
+  };
+});
+
 scenario('"mine" filter includes quotes reassigned to the viewer, not just ones they created', async (d) => {
   const manager = await loginCached(d, "manager@test.local", "password123");
   const rep = await loginCached(d, "rep@test.local", "password123");
