@@ -121,6 +121,7 @@ async function makeWorkerDriver(): Promise<Driver> {
     "0002_consistency.sql",
     "0003_password_reset_requests.sql",
     "0004_user_phone.sql",
+    "0005_reassignment_and_restore.sql",
   ]) {
     sqlite.exec(readFileSync(path.join(migrationsDir, file), "utf8"));
   }
@@ -472,6 +473,93 @@ scenario("an invalid WhatsApp number is rejected with 400", async (d) => {
   const rep = await loginCached(d, "rep@test.local", "password123");
   const updated = await d.api("PATCH", "/api/auth/profile", { body: { phone: "not-a-phone!!" }, session: rep });
   return { status: updated.status };
+});
+
+scenario("rep cannot reassign a quote (403)", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const rep2 = await loginCached(d, "rep2@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  const rep2User = await d.api("GET", "/api/auth/me", { session: rep2 });
+  const reassigned = await d.api("POST", `/api/quotes/${quote.id}/reassign`, {
+    body: { assigned_to: rep2User.json.user.id, note: "" },
+    session: rep,
+  });
+  return { status: reassigned.status };
+});
+
+scenario("reassigning to an unknown user -> 400", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  const reassigned = await d.api("POST", `/api/quotes/${quote.id}/reassign`, {
+    body: { assigned_to: 999999, note: "" },
+    session: manager,
+  });
+  return { status: reassigned.status };
+});
+
+scenario("manager reassigns a draft, the new assignee can then edit it", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const rep2 = await loginCached(d, "rep2@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  const rep2User = await d.api("GET", "/api/auth/me", { session: rep2 });
+  const reassigned = await d.api("POST", `/api/quotes/${quote.id}/reassign`, {
+    body: { assigned_to: rep2User.json.user.id, note: "Rep asli cuti" },
+    session: manager,
+  });
+  const editedByNewAssignee = await d.api("PUT", `/api/quotes/${quote.id}`, {
+    body: { snapshot: snapshotFor([cleanItem({ qty: 250 })]), expected_version: reassigned.json.quote.version },
+    session: rep2,
+  });
+  return {
+    reassignStatus: reassigned.status,
+    assignedToIsSet: reassigned.json.quote.assigned_to != null,
+    editStatus: editedByNewAssignee.status,
+    editedQty: editedByNewAssignee.json.quote.items[0].qty,
+  };
+});
+
+scenario('"mine" filter includes quotes reassigned to the viewer, not just ones they created', async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const rep2 = await loginCached(d, "rep2@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  const rep2User = await d.api("GET", "/api/auth/me", { session: rep2 });
+  await d.api("POST", `/api/quotes/${quote.id}/reassign`, {
+    body: { assigned_to: rep2User.json.user.id, note: "" },
+    session: manager,
+  });
+  const mineList = await d.api("GET", "/api/quotes?mine=1", { session: rep2 });
+  return {
+    status: mineList.status,
+    includesReassignedQuote: mineList.json.quotes.some((q: { id: number }) => q.id === quote.id),
+  };
+});
+
+scenario("restoring a revision tags it restore-<client>-<n> and keeps the prior state", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()]);
+  const saved = await d.api("POST", `/api/quotes/${quote.id}/revisions`, {
+    body: { note: "Snapshot V1" },
+    session: rep,
+  });
+  const detailBefore = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  const snapshotRev = detailBefore.json.revisions.find((r: { note: string }) => r.note === "Snapshot V1");
+  await d.api("PUT", `/api/quotes/${quote.id}`, {
+    body: { snapshot: snapshotFor([cleanItem({ qty: 700 })]), expected_version: quote.version },
+    session: rep,
+  });
+  const restored = await d.api("POST", `/api/quotes/${quote.id}/restore/${snapshotRev.id}`, { session: rep });
+  const detailAfter = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  const notes = detailAfter.json.revisions.map((r: { note: string }) => r.note);
+  return {
+    restoreStatus: restored.status,
+    restoredQty: restored.json.quote.items[0].qty,
+    restoreCount: restored.json.quote.restore_count,
+    hasTaggedRevision: notes.some((n: string) => /^restore-.+-1$/.test(n)),
+    hasPreRestoreSnapshot: notes.some((n: string) => n.startsWith("Sebelum restore-")),
+  };
 });
 
 // ---------------------------------------------------------------

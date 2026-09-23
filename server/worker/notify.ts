@@ -125,3 +125,35 @@ export async function notifyQuoteDecided(
     notifyWhatsApp(env, params.recipient.phone, wa),
   ]);
 }
+
+/** A quote was handed to a different user — tell the new owner. */
+export async function notifyQuoteReassigned(
+  env: Bindings,
+  params: {
+    recipient: Recipient;
+    quoteNumber: string;
+    quoteTitle: string;
+    reassignedBy: string;
+    note: string;
+    quoteId: number;
+  },
+): Promise<void> {
+  const link = `${appUrl(env)}/quotes/${params.quoteId}`;
+  const number = escapeHtml(params.quoteNumber);
+  const title = escapeHtml(params.quoteTitle);
+  const by = escapeHtml(params.reassignedBy);
+  const note = escapeHtml(params.note);
+  const subject = `Quotation ${params.quoteNumber} dialihkan ke Anda`;
+  const html =
+    `<p>Quotation <strong>${number}</strong> (${title}) telah dialihkan ke Anda oleh ${by}.</p>` +
+    (note ? `<p>Catatan: ${note}</p>` : "") +
+    `<p><a href="${link}">Buka quotation</a></p>`;
+  const wa =
+    `Quotation ${params.quoteNumber} (${params.quoteTitle}) dialihkan ke Anda oleh ${params.reassignedBy}.` +
+    (params.note ? ` Catatan: ${params.note}` : "") +
+    `\n${link}`;
+  await Promise.all([
+    notifyEmail(env, params.recipient.email, subject, html),
+    notifyWhatsApp(env, params.recipient.phone, wa),
+  ]);
+}

@@ -231,6 +231,9 @@ export interface Quote extends QuoteSnapshot {
   version: number;
   created_by: number;
   created_by_name?: string;
+  assigned_to: number | null;
+  assigned_to_name?: string;
+  restore_count: number;
   approved_by: number | null;
   approved_by_name?: string;
   approved_at: string | null;

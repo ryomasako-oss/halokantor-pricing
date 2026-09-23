@@ -17,15 +17,23 @@ import {
 } from "../quoteService.js";
 import { isWithinPolicy } from "../../shared/policy.js";
 import { DEFAULT_ASSUMPTIONS, DEFAULT_REGIONS } from "../../shared/engine.js";
-import { notifyQuoteDecided, notifyQuoteSubmitted } from "../notify.js";
-import type { Client, QuoteSnapshot, QuoteStatus } from "../../shared/types.js";
+import { notifyQuoteDecided, notifyQuoteReassigned, notifyQuoteSubmitted } from "../notify.js";
+import type { Client, QuoteSnapshot, QuoteStatus, User } from "../../shared/types.js";
 
 export const quotesRouter = Router();
 quotesRouter.use(requireAuth);
 
-/** Reps may only change their own quotes; managers and admins may change any. */
-function canEdit(req: AuthedRequest, createdBy: number): boolean {
-  return req.user!.id === createdBy || hasPermission(req.user!.role, "edit_all_quotes");
+/** Reps may only change their own quotes or one reassigned to them; managers/admins may change any. */
+function canEdit(req: AuthedRequest, createdBy: number, assignedTo: number | null): boolean {
+  return (
+    req.user!.id === createdBy ||
+    req.user!.id === assignedTo ||
+    hasPermission(req.user!.role, "edit_all_quotes")
+  );
+}
+
+function slugify(input: string): string {
+  return input.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-+|-+$)/g, "");
 }
 
 quotesRouter.get("/", (req: AuthedRequest, res) => {
@@ -38,8 +46,10 @@ quotesRouter.get("/", (req: AuthedRequest, res) => {
     params.push(status);
   }
   if (mine) {
-    where.push("q.created_by = ?");
-    params.push(req.user!.id);
+    // Includes quotes reassigned TO this user, not just ones they created —
+    // otherwise a reassigned quote silently drops out of the assignee's own list.
+    where.push("(q.created_by = ? OR q.assigned_to = ?)");
+    params.push(req.user!.id, req.user!.id);
   }
   const userIdParam = String(req.query.user_id ?? "").trim();
   if (userIdParam) {
@@ -68,6 +78,15 @@ quotesRouter.get("/", (req: AuthedRequest, res) => {
         net_margin,
       };
     }),
+  });
+});
+
+/** Users a manager/admin can reassign a quote to (for the "responsible person is absent" flow). */
+quotesRouter.get("/users/assignable", requirePermission("decide_quotes"), (_req: AuthedRequest, res) => {
+  res.json({
+    users: all<Pick<User, "id" | "name" | "role">>(
+      "SELECT id, name, role FROM users WHERE active = 1 ORDER BY name",
+    ),
   });
 });
 
@@ -101,7 +120,7 @@ quotesRouter.get("/:id", (req: AuthedRequest, res) => {
     approvals,
     audit: auditFor("quote", id, 60),
     policy: breachesFor(quote),
-    canEdit: canEdit(req, quote.created_by) && EDITABLE_STATUSES.includes(quote.status),
+    canEdit: canEdit(req, quote.created_by, quote.assigned_to) && EDITABLE_STATUSES.includes(quote.status),
   });
 });
 
@@ -182,7 +201,7 @@ quotesRouter.put("/:id", (req: AuthedRequest, res) => {
     res.status(404).json({ error: "Quotation tidak ditemukan." });
     return;
   }
-  if (!canEdit(req, existing.created_by)) {
+  if (!canEdit(req, existing.created_by, existing.assigned_to)) {
     res.status(403).json({ error: "Quotation ini milik pengguna lain." });
     return;
   }
@@ -251,7 +270,7 @@ quotesRouter.post("/:id/restore/:revisionId", (req: AuthedRequest, res) => {
     res.status(404).json({ error: "Quotation tidak ditemukan." });
     return;
   }
-  if (!canEdit(req, quote.created_by) || !EDITABLE_STATUSES.includes(quote.status)) {
+  if (!canEdit(req, quote.created_by, quote.assigned_to) || !EDITABLE_STATUSES.includes(quote.status)) {
     res.status(409).json({ error: "Quotation harus berstatus draft untuk dipulihkan." });
     return;
   }
@@ -265,17 +284,70 @@ quotesRouter.post("/:id/restore/:revisionId", (req: AuthedRequest, res) => {
     return;
   }
   const s = JSON.parse(rev.snapshot) as QuoteSnapshot;
-  run(
-    `UPDATE quotes SET scenario = ?, assumptions = ?, items = ?, regions = ?, meta = ?,
-            version = version + 1, updated_at = datetime('now') WHERE id = ?`,
-    s.scenario ?? quote.scenario,
-    JSON.stringify(s.assumptions),
-    JSON.stringify(s.items),
-    JSON.stringify(s.regions),
-    JSON.stringify(s.meta),
-    id,
-  );
-  audit(req.user!.id, "quote", id, "restored", { from_rev: rev.rev_no });
+  const client = quote.client_id
+    ? get<{ code: string }>("SELECT code FROM clients WHERE id = ?", quote.client_id)
+    : undefined;
+  const restoreNo = quote.restore_count + 1;
+  const tag = `restore-${slugify(client?.code || quote.client_name || "unassigned") || "unassigned"}-${restoreNo}`;
+
+  tx(() => {
+    // Snapshot what was there before the overwrite, so an accidental restore
+    // doesn't silently discard unsaved draft content with no way back.
+    saveRevision(id, quote.rev_no, quote, req.user!.id, `Sebelum ${tag}`);
+    run(
+      `UPDATE quotes SET scenario = ?, assumptions = ?, items = ?, regions = ?, meta = ?,
+              version = version + 1, restore_count = ?, updated_at = datetime('now') WHERE id = ?`,
+      s.scenario ?? quote.scenario,
+      JSON.stringify(s.assumptions),
+      JSON.stringify(s.items),
+      JSON.stringify(s.regions),
+      JSON.stringify(s.meta),
+      restoreNo,
+      id,
+    );
+    saveRevision(id, quote.rev_no, s, req.user!.id, tag);
+  });
+  audit(req.user!.id, "quote", id, "restored", { from_rev: rev.rev_no, tag });
+  res.json({ quote: findQuote(id) });
+});
+
+/** Hand a quote to another active user — manager/admin only, e.g. when the
+ * responsible person is absent. Grants the new assignee edit rights alongside
+ * (not instead of) the original creator. */
+quotesRouter.post("/:id/reassign", requirePermission("decide_quotes"), (req: AuthedRequest, res) => {
+  const id = Number(req.params.id);
+  const quote = findQuote(id);
+  if (!quote) {
+    res.status(404).json({ error: "Quotation tidak ditemukan." });
+    return;
+  }
+  const parsed = z
+    .object({ assigned_to: z.number().int().nullable(), note: z.string().max(500).default("") })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: zodMessage(parsed.error) });
+    return;
+  }
+  let target: User | undefined;
+  if (parsed.data.assigned_to !== null) {
+    target = get<User>("SELECT * FROM users WHERE id = ? AND active = 1", parsed.data.assigned_to);
+    if (!target) {
+      res.status(400).json({ error: "Pengguna tujuan tidak ditemukan atau tidak aktif." });
+      return;
+    }
+  }
+  run("UPDATE quotes SET assigned_to = ?, updated_at = datetime('now') WHERE id = ?", parsed.data.assigned_to, id);
+  audit(req.user!.id, "quote", id, "reassigned", { to: parsed.data.assigned_to, note: parsed.data.note });
+  if (target) {
+    void notifyQuoteReassigned({
+      recipient: { name: target.name, email: target.email, phone: target.phone },
+      quoteNumber: quote.number,
+      quoteTitle: quote.title,
+      reassignedBy: req.user!.name,
+      note: parsed.data.note,
+      quoteId: id,
+    });
+  }
   res.json({ quote: findQuote(id) });
 });
 
@@ -288,7 +360,7 @@ quotesRouter.post("/:id/submit", (req: AuthedRequest, res) => {
     res.status(404).json({ error: "Quotation tidak ditemukan." });
     return;
   }
-  if (!canEdit(req, quote.created_by)) {
+  if (!canEdit(req, quote.created_by, quote.assigned_to)) {
     res.status(403).json({ error: "Quotation ini milik pengguna lain." });
     return;
   }
@@ -442,7 +514,7 @@ quotesRouter.post("/:id/status", (req: AuthedRequest, res) => {
     res.status(404).json({ error: "Quotation tidak ditemukan." });
     return;
   }
-  if (!canEdit(req, quote.created_by)) {
+  if (!canEdit(req, quote.created_by, quote.assigned_to)) {
     res.status(403).json({ error: "Quotation ini milik pengguna lain." });
     return;
   }
@@ -467,7 +539,7 @@ quotesRouter.post("/:id/reopen", (req: AuthedRequest, res) => {
     res.status(404).json({ error: "Quotation tidak ditemukan." });
     return;
   }
-  if (!canEdit(req, quote.created_by)) {
+  if (!canEdit(req, quote.created_by, quote.assigned_to)) {
     res.status(403).json({ error: "Quotation ini milik pengguna lain." });
     return;
   }

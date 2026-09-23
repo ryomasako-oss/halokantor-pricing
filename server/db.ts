@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS quotes (
   scenario       INTEGER NOT NULL DEFAULT 1,
   rev_no         INTEGER NOT NULL DEFAULT 1,
   version        INTEGER NOT NULL DEFAULT 1,
+  assigned_to    INTEGER REFERENCES users(id),
+  restore_count  INTEGER NOT NULL DEFAULT 0,
   assumptions    TEXT NOT NULL,
   items          TEXT NOT NULL,
   regions        TEXT NOT NULL,
@@ -79,6 +81,7 @@ CREATE TABLE IF NOT EXISTS quotes (
 CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);
 CREATE INDEX IF NOT EXISTS idx_quotes_client ON quotes(client_id);
 CREATE INDEX IF NOT EXISTS idx_quotes_created_by ON quotes(created_by);
+CREATE INDEX IF NOT EXISTS idx_quotes_assigned_to ON quotes(assigned_to);
 
 CREATE TABLE IF NOT EXISTS quote_revisions (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,6 +146,17 @@ try {
 } catch (err) {
   if (!(err instanceof Error) || !err.message.includes("duplicate column name")) throw err;
 }
+try {
+  db.exec("ALTER TABLE quotes ADD COLUMN assigned_to INTEGER REFERENCES users(id)");
+} catch (err) {
+  if (!(err instanceof Error) || !err.message.includes("duplicate column name")) throw err;
+}
+try {
+  db.exec("ALTER TABLE quotes ADD COLUMN restore_count INTEGER NOT NULL DEFAULT 0");
+} catch (err) {
+  if (!(err instanceof Error) || !err.message.includes("duplicate column name")) throw err;
+}
+db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_assigned_to ON quotes(assigned_to)");
 
 /* ---------------- typed query helpers ---------------- */
 

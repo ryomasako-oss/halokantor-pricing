@@ -62,6 +62,11 @@ interface QuoteDetail {
   audit: AuditRow[];
   canEdit: boolean;
 }
+interface AssignableUser {
+  id: number;
+  name: string;
+  role: string;
+}
 
 const ACTION_LABEL: Record<string, string> = {
   created: "Dibuat",
@@ -71,6 +76,7 @@ const ACTION_LABEL: Record<string, string> = {
   rejected: "Ditolak",
   reopened: "Dibuka kembali sebagai revisi baru",
   restored: "Dipulihkan dari revisi",
+  reassigned: "Dialihkan ke pengguna lain",
   revision_saved: "Snapshot revisi disimpan",
   status_sent: "Ditandai terkirim ke klien",
   status_won: "Ditandai menang",
@@ -95,6 +101,7 @@ export function QuoteEditorPage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"items" | "assumptions" | "delivery" | "document" | "history">("items");
   const [modal, setModal] = useState<null | { kind: string; payload?: unknown }>(null);
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
   const saved = useRef<string>("");
 
   const load = useCallback(async () => {
@@ -348,6 +355,7 @@ export function QuoteEditorPage() {
             <StatusChip status={quote.status} />
             <span className="muted small">
               {clientName} · {snapshot.items.length} item · dibuat {quote.created_by_name}
+              {quote.assigned_to_name ? ` · ditugaskan ke ${quote.assigned_to_name}` : ""}
             </span>
             {dirty && <span className="badge amber">Belum disimpan</span>}
           </div>
@@ -362,6 +370,22 @@ export function QuoteEditorPage() {
           <button className="btn" onClick={() => setModal({ kind: "export" })}>
             <Icon name="download" size={15} /> Ekspor
           </button>
+          {can("decide_quotes") && (
+            <button
+              className="btn"
+              onClick={async () => {
+                try {
+                  const r = await api.get<{ users: AssignableUser[] }>("/quotes/users/assignable");
+                  setAssignableUsers(r.users);
+                  setModal({ kind: "reassign" });
+                } catch (e) {
+                  toast(e instanceof Error ? e.message : "Gagal memuat daftar pengguna.", "error");
+                }
+              }}
+            >
+              <Icon name="shield" size={15} /> Alihkan
+            </button>
+          )}
           <WorkflowButtons
             quote={quote}
             canManage={can("decide_quotes")}
@@ -828,6 +852,20 @@ export function QuoteEditorPage() {
           onConfirm={() => void act(() => api.post(`/quotes/${quoteId}/reopen`), "Revisi baru dibuka.")}
         />
       )}
+
+      {modal?.kind === "reassign" && (
+        <ReassignModal
+          quote={quote}
+          users={assignableUsers}
+          onClose={() => setModal(null)}
+          onReassign={(assignedTo, note) =>
+            void act(
+              () => api.post(`/quotes/${quoteId}/reassign`, { assigned_to: assignedTo, note }),
+              assignedTo ? "Quotation dialihkan." : "Penugasan dilepas.",
+            )
+          }
+        />
+      )}
     </main>
   );
 }
@@ -950,6 +988,59 @@ function DecideModal({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Misal: margin tipis tapi volume kontrak sepadan, atau minta naikkan harga item leader."
+        />
+      </label>
+    </Modal>
+  );
+}
+
+/* ---------------- reassignment modal ---------------- */
+
+function ReassignModal({
+  quote, users, onClose, onReassign,
+}: {
+  quote: Quote;
+  users: AssignableUser[];
+  onClose: () => void;
+  onReassign: (assignedTo: number | null, note: string) => void;
+}) {
+  const [target, setTarget] = useState<string>(quote.assigned_to ? String(quote.assigned_to) : "");
+  const [note, setNote] = useState("");
+
+  return (
+    <Modal
+      title="Alihkan quotation"
+      sub={`${quote.number} · saat ini ${quote.assigned_to_name ?? "belum ditugaskan"}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn ghost" onClick={onClose}>Batal</button>
+          <button
+            className="btn primary"
+            onClick={() => onReassign(target ? Number(target) : null, note)}
+          >
+            {target ? "Alihkan" : "Lepas penugasan"}
+          </button>
+        </>
+      }
+    >
+      <label className="field">
+        <span>Ditugaskan ke</span>
+        <select className="select" value={target} onChange={(e) => setTarget(e.target.value)}>
+          <option value="">Tidak ada (lepas penugasan)</option>
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+          ))}
+        </select>
+      </label>
+      <label className="field" style={{ marginTop: 14 }}>
+        <span>Catatan (opsional)</span>
+        <textarea
+          className="textarea"
+          rows={3}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Misal: penanggung jawab sedang cuti, diserahkan sementara."
         />
       </label>
     </Modal>

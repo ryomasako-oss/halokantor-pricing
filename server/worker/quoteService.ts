@@ -26,6 +26,9 @@ export interface QuoteRow {
   scenario: number;
   rev_no: number;
   version: number;
+  assigned_to: number | null;
+  assigned_to_name: string | null;
+  restore_count: number;
   assumptions: string;
   items: string;
   regions: string;
@@ -41,11 +44,13 @@ export interface QuoteRow {
 }
 
 const SELECT_QUOTE = `
-  SELECT q.*, c.name AS client_name, u.name AS created_by_name, a.name AS approved_by_name
+  SELECT q.*, c.name AS client_name, u.name AS created_by_name,
+         a.name AS approved_by_name, asg.name AS assigned_to_name
     FROM quotes q
     LEFT JOIN clients c ON c.id = q.client_id
     LEFT JOIN users   u ON u.id = q.created_by
-    LEFT JOIN users   a ON a.id = q.approved_by`;
+    LEFT JOIN users   a ON a.id = q.approved_by
+    LEFT JOIN users   asg ON asg.id = q.assigned_to`;
 
 export const currentPolicy = (d1: D1Database): Promise<PricingPolicy> =>
   getSetting<PricingPolicy>(d1, "policy", DEFAULT_POLICY);
@@ -84,6 +89,9 @@ export function hydrate(row: QuoteRow): Quote {
     version: row.version,
     created_by: row.created_by,
     created_by_name: row.created_by_name,
+    assigned_to: row.assigned_to,
+    assigned_to_name: row.assigned_to_name ?? undefined,
+    restore_count: row.restore_count,
     approved_by: row.approved_by,
     approved_by_name: row.approved_by_name ?? undefined,
     approved_at: row.approved_at,

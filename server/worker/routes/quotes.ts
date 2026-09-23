@@ -17,16 +17,20 @@ import {
 } from "../quoteService";
 import { isWithinPolicy } from "../../../shared/policy";
 import { DEFAULT_ASSUMPTIONS, DEFAULT_REGIONS } from "../../../shared/engine";
-import { notifyQuoteDecided, notifyQuoteSubmitted } from "../notify";
+import { notifyQuoteDecided, notifyQuoteReassigned, notifyQuoteSubmitted } from "../notify";
 import type { Client, QuoteSnapshot, QuoteStatus, User } from "../../../shared/types";
 import type { Env } from "../env";
 
 export const quotesRouter = new Hono<Env>();
 quotesRouter.use(requireAuth);
 
-/** Reps may only change their own quotes; managers and admins may change any. */
-function canEdit(user: User, createdBy: number): boolean {
-  return user.id === createdBy || hasPermission(user.role, "edit_all_quotes");
+/** Reps may only change their own quotes or one reassigned to them; managers/admins may change any. */
+function canEdit(user: User, createdBy: number, assignedTo: number | null): boolean {
+  return user.id === createdBy || user.id === assignedTo || hasPermission(user.role, "edit_all_quotes");
+}
+
+function slugify(input: string): string {
+  return input.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-+|-+$)/g, "");
 }
 
 quotesRouter.get("/", async (c) => {
@@ -40,8 +44,10 @@ quotesRouter.get("/", async (c) => {
     params.push(status);
   }
   if (mine) {
-    where.push("q.created_by = ?");
-    params.push(user.id);
+    // Includes quotes reassigned TO this user, not just ones they created —
+    // otherwise a reassigned quote silently drops out of the assignee's own list.
+    where.push("(q.created_by = ? OR q.assigned_to = ?)");
+    params.push(user.id, user.id);
   }
   const userIdParam = (c.req.query("user_id") ?? "").trim();
   if (userIdParam) {
@@ -71,6 +77,15 @@ quotesRouter.get("/", async (c) => {
       };
     }),
   });
+});
+
+/** Users a manager/admin can reassign a quote to (for the "responsible person is absent" flow). */
+quotesRouter.get("/users/assignable", requirePermission("decide_quotes"), async (c) => {
+  const users = await all<Pick<User, "id" | "name" | "role">>(
+    c.env.DB,
+    "SELECT id, name, role FROM users WHERE active = 1 ORDER BY name",
+  );
+  return c.json({ users });
 });
 
 quotesRouter.get("/:id", async (c) => {
@@ -105,7 +120,7 @@ quotesRouter.get("/:id", async (c) => {
     approvals,
     audit: await auditFor(c.env.DB, "quote", id, 60),
     policy: await breachesFor(c.env.DB, quote),
-    canEdit: canEdit(user, quote.created_by) && EDITABLE_STATUSES.includes(quote.status),
+    canEdit: canEdit(user, quote.created_by, quote.assigned_to) && EDITABLE_STATUSES.includes(quote.status),
   });
 });
 
@@ -181,7 +196,7 @@ quotesRouter.put("/:id", async (c) => {
   const id = Number(c.req.param("id"));
   const existing = await findQuote(c.env.DB, id);
   if (!existing) return c.json({ error: "Quotation tidak ditemukan." }, 404);
-  if (!canEdit(user, existing.created_by)) return c.json({ error: "Quotation ini milik pengguna lain." }, 403);
+  if (!canEdit(user, existing.created_by, existing.assigned_to)) return c.json({ error: "Quotation ini milik pengguna lain." }, 403);
   if (!EDITABLE_STATUSES.includes(existing.status)) {
     return c.json(
       { error: `Quotation berstatus ${existing.status} terkunci. Buka kembali sebagai revisi baru untuk mengubahnya.` },
@@ -246,7 +261,7 @@ quotesRouter.post("/:id/restore/:revisionId", async (c) => {
   const id = Number(c.req.param("id"));
   const quote = await findQuote(c.env.DB, id);
   if (!quote) return c.json({ error: "Quotation tidak ditemukan." }, 404);
-  if (!canEdit(user, quote.created_by) || !EDITABLE_STATUSES.includes(quote.status)) {
+  if (!canEdit(user, quote.created_by, quote.assigned_to) || !EDITABLE_STATUSES.includes(quote.status)) {
     return c.json({ error: "Quotation harus berstatus draft untuk dipulihkan." }, 409);
   }
   const rev = await get<{ snapshot: string; rev_no: number }>(
@@ -258,18 +273,88 @@ quotesRouter.post("/:id/restore/:revisionId", async (c) => {
   if (!rev) return c.json({ error: "Revisi tidak ditemukan." }, 404);
 
   const s = JSON.parse(rev.snapshot) as QuoteSnapshot;
+  const client = quote.client_id
+    ? await get<{ code: string }>(c.env.DB, "SELECT code FROM clients WHERE id = ?", quote.client_id)
+    : undefined;
+  const restoreNo = quote.restore_count + 1;
+  const tag = `restore-${slugify(client?.code || quote.client_name || "unassigned") || "unassigned"}-${restoreNo}`;
+
+  await batch(c.env.DB, [
+    // Snapshot what was there before the overwrite, so an accidental restore
+    // doesn't silently discard unsaved draft content with no way back.
+    stmt(
+      c.env.DB,
+      "INSERT INTO quote_revisions(quote_id, rev_no, snapshot, note, created_by) VALUES(?, ?, ?, ?, ?)",
+      id,
+      quote.rev_no,
+      JSON.stringify(quote),
+      `Sebelum ${tag}`,
+      user.id,
+    ),
+    stmt(
+      c.env.DB,
+      `UPDATE quotes SET scenario = ?, assumptions = ?, items = ?, regions = ?, meta = ?,
+              version = version + 1, restore_count = ?, updated_at = datetime('now') WHERE id = ?`,
+      s.scenario ?? quote.scenario,
+      JSON.stringify(s.assumptions),
+      JSON.stringify(s.items),
+      JSON.stringify(s.regions),
+      JSON.stringify(s.meta),
+      restoreNo,
+      id,
+    ),
+    stmt(
+      c.env.DB,
+      "INSERT INTO quote_revisions(quote_id, rev_no, snapshot, note, created_by) VALUES(?, ?, ?, ?, ?)",
+      id,
+      quote.rev_no,
+      JSON.stringify(s),
+      tag,
+      user.id,
+    ),
+  ]);
+  await audit(c.env.DB, user.id, "quote", id, "restored", { from_rev: rev.rev_no, tag });
+  return c.json({ quote: await findQuote(c.env.DB, id) });
+});
+
+/** Hand a quote to another active user — manager/admin only, e.g. when the
+ * responsible person is absent. Grants the new assignee edit rights alongside
+ * (not instead of) the original creator. */
+quotesRouter.post("/:id/reassign", requirePermission("decide_quotes"), async (c) => {
+  const user = c.get("user")!;
+  const id = Number(c.req.param("id"));
+  const quote = await findQuote(c.env.DB, id);
+  if (!quote) return c.json({ error: "Quotation tidak ditemukan." }, 404);
+
+  const parsed = z
+    .object({ assigned_to: z.number().int().nullable(), note: z.string().max(500).default("") })
+    .safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: zodMessage(parsed.error) }, 400);
+
+  let target: User | undefined;
+  if (parsed.data.assigned_to !== null) {
+    target = await get<User>(c.env.DB, "SELECT * FROM users WHERE id = ? AND active = 1", parsed.data.assigned_to);
+    if (!target) return c.json({ error: "Pengguna tujuan tidak ditemukan atau tidak aktif." }, 400);
+  }
   await run(
     c.env.DB,
-    `UPDATE quotes SET scenario = ?, assumptions = ?, items = ?, regions = ?, meta = ?,
-            version = version + 1, updated_at = datetime('now') WHERE id = ?`,
-    s.scenario ?? quote.scenario,
-    JSON.stringify(s.assumptions),
-    JSON.stringify(s.items),
-    JSON.stringify(s.regions),
-    JSON.stringify(s.meta),
+    "UPDATE quotes SET assigned_to = ?, updated_at = datetime('now') WHERE id = ?",
+    parsed.data.assigned_to,
     id,
   );
-  await audit(c.env.DB, user.id, "quote", id, "restored", { from_rev: rev.rev_no });
+  await audit(c.env.DB, user.id, "quote", id, "reassigned", { to: parsed.data.assigned_to, note: parsed.data.note });
+  if (target) {
+    c.executionCtx.waitUntil(
+      notifyQuoteReassigned(c.env, {
+        recipient: { name: target.name, email: target.email, phone: target.phone },
+        quoteNumber: quote.number,
+        quoteTitle: quote.title,
+        reassignedBy: user.name,
+        note: parsed.data.note,
+        quoteId: id,
+      }),
+    );
+  }
   return c.json({ quote: await findQuote(c.env.DB, id) });
 });
 
@@ -280,7 +365,7 @@ quotesRouter.post("/:id/submit", async (c) => {
   const id = Number(c.req.param("id"));
   const quote = await findQuote(c.env.DB, id);
   if (!quote) return c.json({ error: "Quotation tidak ditemukan." }, 404);
-  if (!canEdit(user, quote.created_by)) return c.json({ error: "Quotation ini milik pengguna lain." }, 403);
+  if (!canEdit(user, quote.created_by, quote.assigned_to)) return c.json({ error: "Quotation ini milik pengguna lain." }, 403);
   if (!EDITABLE_STATUSES.includes(quote.status)) return c.json({ error: "Hanya draft yang bisa diajukan." }, 409);
 
   const { breaches, monthly_value, net_margin } = await breachesFor(c.env.DB, quote);
@@ -444,7 +529,7 @@ quotesRouter.post("/:id/status", async (c) => {
   const id = Number(c.req.param("id"));
   const quote = await findQuote(c.env.DB, id);
   if (!quote) return c.json({ error: "Quotation tidak ditemukan." }, 404);
-  if (!canEdit(user, quote.created_by)) return c.json({ error: "Quotation ini milik pengguna lain." }, 403);
+  if (!canEdit(user, quote.created_by, quote.assigned_to)) return c.json({ error: "Quotation ini milik pengguna lain." }, 403);
 
   const body = await c.req.json().catch(() => ({}));
   const next = String(body?.status ?? "") as QuoteStatus;
@@ -463,7 +548,7 @@ quotesRouter.post("/:id/reopen", async (c) => {
   const id = Number(c.req.param("id"));
   const quote = await findQuote(c.env.DB, id);
   if (!quote) return c.json({ error: "Quotation tidak ditemukan." }, 404);
-  if (!canEdit(user, quote.created_by)) return c.json({ error: "Quotation ini milik pengguna lain." }, 403);
+  if (!canEdit(user, quote.created_by, quote.assigned_to)) return c.json({ error: "Quotation ini milik pengguna lain." }, 403);
   if (quote.status === "draft") return c.json({ error: "Quotation sudah berstatus draft." }, 409);
 
   const nextRev = quote.rev_no + 1;
