@@ -1,0 +1,22 @@
+{
+  "name": "halokantor-pricing-agent",
+  "version": "0.1.0",
+  "private": true,
+  "bin": "src/cli.ts",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "sync": "tsx src/cli.ts sync",
+    "recommend": "tsx src/cli.ts recommend",
+    "detect-industry": "tsx src/cli.ts detect-industry"
+  },
+  "dependencies": {
+    "googleapis": "^14.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.0.0"
+  }
+}
