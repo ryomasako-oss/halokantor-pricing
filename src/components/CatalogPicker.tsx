@@ -123,6 +123,7 @@ export function CatalogPicker({
             <thead>
               <tr>
                 <th className="l">Item</th>
+                <th>Satuan</th>
                 <th>COGS</th>
                 <th>Harga jual</th>
                 <th>Stok</th>
@@ -142,6 +143,7 @@ export function CatalogPicker({
                       )}
                     </div>
                   </td>
+                  <td className="muted small">{item.uom || "Pcs"}</td>
                   <td className="num">{item.cogs > 0 ? grp(item.cogs) : <span className="muted">—</span>}</td>
                   <td className="num">{item.list_price > 0 ? grp(item.list_price) : <span className="muted">—</span>}</td>
                   <td className="num muted">{grp(item.stock)}</td>
