@@ -251,6 +251,12 @@ quotesRouter.put("/:id", (req: AuthedRequest, res) => {
     });
     return;
   }
+  // Without this, an edit to a rejected quote (e.g. a manager fixing it
+  // themselves before handing it back) left no trace anyone could see.
+  audit(req.user!.id, "quote", id, "edited", {
+    version: parsed.data.expected_version + 1,
+    from_status: existing.status,
+  });
   res.json({ quote: findQuote(id) });
 });
 
@@ -508,11 +514,13 @@ quotesRouter.post("/:id/decide", requirePermission("decide_quotes"), (req: Authe
       );
     }
     run(
+      // approved_by/approved_at record whoever decided, approve or reject —
+      // otherwise a rejection banner has no way to say who rejected it.
       `UPDATE quotes SET status = ?, approved_by = ?, approved_at = ?, decision_note = ?,
               updated_at = datetime('now') WHERE id = ?`,
       parsed.data.decision,
-      parsed.data.decision === "approved" ? req.user!.id : null,
-      parsed.data.decision === "approved" ? now : null,
+      req.user!.id,
+      now,
       parsed.data.note,
       id,
     );

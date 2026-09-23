@@ -244,6 +244,12 @@ quotesRouter.put("/:id", async (c) => {
       409,
     );
   }
+  // Without this, an edit to a rejected quote (e.g. a manager fixing it
+  // themselves before handing it back) left no trace anyone could see.
+  await audit(c.env.DB, user.id, "quote", id, "edited", {
+    version: parsed.data.expected_version + 1,
+    from_status: existing.status,
+  });
   return c.json({ quote: await findQuote(c.env.DB, id) });
 });
 
@@ -528,11 +534,13 @@ quotesRouter.post("/:id/decide", requirePermission("decide_quotes"), async (c) =
   statements.push(
     stmt(
       c.env.DB,
+      // approved_by/approved_at record whoever decided, approve or reject —
+      // otherwise a rejection banner has no way to say who rejected it.
       `UPDATE quotes SET status = ?, approved_by = ?, approved_at = ?, decision_note = ?,
               updated_at = datetime('now') WHERE id = ?`,
       parsed.data.decision,
-      parsed.data.decision === "approved" ? user.id : null,
-      parsed.data.decision === "approved" ? now : null,
+      user.id,
+      now,
       parsed.data.note,
       id,
     ),

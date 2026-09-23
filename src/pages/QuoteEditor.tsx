@@ -70,6 +70,7 @@ interface AssignableUser {
 
 const ACTION_LABEL: Record<string, string> = {
   created: "Dibuat",
+  edited: "Diedit",
   submitted: "Diajukan untuk persetujuan",
   auto_approved: "Disetujui otomatis (dalam kebijakan)",
   approved: "Disetujui",

@@ -615,6 +615,40 @@ scenario("reopening a submitted quote clears it from the manager's pending-appro
   };
 });
 
+scenario("rejecting a quote records who rejected it, visible on the quote itself", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()], { targetMargin: 0.05, leaderMargin: 0.0 });
+  await d.api("POST", `/api/quotes/${quote.id}/submit`, { session: rep });
+  const decided = await d.api("POST", `/api/quotes/${quote.id}/decide`, {
+    body: { decision: "rejected", note: "Margin terlalu tipis." },
+    session: manager,
+  });
+  return {
+    approvedByIsSet: decided.json.quote.approved_by != null,
+    approvedByName: decided.json.quote.approved_by_name,
+  };
+});
+
+scenario("editing a quote (e.g. fixing it after a rejection) is recorded in the audit trail", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem()], { targetMargin: 0.05, leaderMargin: 0.0 });
+  await d.api("POST", `/api/quotes/${quote.id}/submit`, { session: rep });
+  const decided = await d.api("POST", `/api/quotes/${quote.id}/decide`, {
+    body: { decision: "rejected", note: "Tambah item dulu." },
+    session: manager,
+  });
+  // Manager fixes it directly (edit_all_quotes lets them touch a rejected quote).
+  await d.api("PUT", `/api/quotes/${quote.id}`, {
+    body: { snapshot: snapshotFor([cleanItem(), cleanItem({ id: "it2", lineNo: 2, code: "ATK-002" })]), expected_version: decided.json.quote.version },
+    session: manager,
+  });
+  const detail = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  const editEntry = detail.json.audit.find((a: { action: string }) => a.action === "edited");
+  return { hasEditAuditEntry: Boolean(editEntry), editedByManager: editEntry?.actor_name === "Manager One" };
+});
+
 scenario('"mine" filter includes quotes reassigned to the viewer, not just ones they created', async (d) => {
   const manager = await loginCached(d, "manager@test.local", "password123");
   const rep = await loginCached(d, "rep@test.local", "password123");
