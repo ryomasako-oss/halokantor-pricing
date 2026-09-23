@@ -81,7 +81,6 @@ CREATE TABLE IF NOT EXISTS quotes (
 CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);
 CREATE INDEX IF NOT EXISTS idx_quotes_client ON quotes(client_id);
 CREATE INDEX IF NOT EXISTS idx_quotes_created_by ON quotes(created_by);
-CREATE INDEX IF NOT EXISTS idx_quotes_assigned_to ON quotes(assigned_to);
 
 CREATE TABLE IF NOT EXISTS quote_revisions (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
