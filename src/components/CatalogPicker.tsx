@@ -27,6 +27,18 @@ export function CatalogPicker({
   // need the item to still be in the current search results.
   const [pickedItems, setPickedItems] = useState<Record<number, CatalogItem>>({});
   const [onlyPriced, setOnlyPriced] = useState(true);
+  // Managed satuan list. A row's UOM can be switched at pick time (e.g. an
+  // item mastered in Pcs but ordered per Lusin); the override only applies to
+  // the quote line, never to the catalog master.
+  const [uomOptions, setUomOptions] = useState<string[]>([]);
+  const [uomOverride, setUomOverride] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    api
+      .get<{ options: { id: number; name: string }[] }>("/catalog/uom")
+      .then((r) => setUomOptions(r.options.map((o) => o.name)))
+      .catch(() => setUomOptions([]));
+  }, []);
 
   const search = useCallback(() => {
     setLoading(true);
@@ -61,7 +73,7 @@ export function CatalogPicker({
           lineNo: 0,
           code: item.code,
           name: item.name,
-          uom: item.uom || "Pcs",
+          uom: uomOverride[item.id] || item.uom || "Pcs",
           qty,
           cogs: Math.round(item.cogs),
           // The master's list price is the natural starting ceiling.
@@ -123,11 +135,11 @@ export function CatalogPicker({
             <thead>
               <tr>
                 <th className="l">Item</th>
-                <th>Satuan</th>
                 <th>COGS</th>
                 <th>Harga jual</th>
                 <th>Stok</th>
-                <th>Qty/bln</th>
+                <th>Satuan</th>
+                <th>Qty</th>
               </tr>
             </thead>
             <tbody>
@@ -143,10 +155,28 @@ export function CatalogPicker({
                       )}
                     </div>
                   </td>
-                  <td className="muted small">{item.uom || "Pcs"}</td>
                   <td className="num">{item.cogs > 0 ? grp(item.cogs) : <span className="muted">—</span>}</td>
                   <td className="num">{item.list_price > 0 ? grp(item.list_price) : <span className="muted">—</span>}</td>
                   <td className="num muted">{grp(item.stock)}</td>
+                  <td className="c">
+                    {uomOptions.length === 0 ? (
+                      <span className="muted small">{item.uom || "Pcs"}</span>
+                    ) : (
+                      <select
+                        className="cell uom"
+                        value={uomOverride[item.id] ?? (item.uom || "Pcs")}
+                        onChange={(e) => setUomOverride((u) => ({ ...u, [item.id]: e.target.value }))}
+                        aria-label={`Satuan ${item.name}`}
+                      >
+                        {item.uom && !uomOptions.includes(item.uom) && (
+                          <option value={item.uom}>{item.uom}</option>
+                        )}
+                        {uomOptions.map((u) => (
+                          <option key={u} value={u}>{u}</option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
                   <td>
                     <input
                       className="cell"
