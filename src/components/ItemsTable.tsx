@@ -147,7 +147,7 @@ export function ItemsTable({
               <tr>
                 {head("lineNo", "No", "c")}
                 {head("name", "Item", "l", 230)}
-                {head("qty", "Qty/bln")}
+                {head("qty", "Qty")}
                 {head("cogs", "COGS")}
                 {head("rrp", "RRP")}
                 <th>Role S2</th>

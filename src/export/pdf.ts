@@ -93,7 +93,7 @@ export function quotationPdf(input: Input): jsPDF {
 
   autoTable(doc, {
     startY: (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 14,
-    head: [["No", "Item", "Satuan", "Qty/bln", "Harga satuan", "Total per bulan"]],
+    head: [["No", "Item", "Satuan", "Qty", "Harga satuan", "Total per bulan"]],
     body: engine.rows.map((r) => [
       String(r.lineNo),
       r.code ? `${r.name}\n${r.code}` : r.name,

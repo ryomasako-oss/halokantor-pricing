@@ -38,7 +38,7 @@ export function quoteWorkbook(input: Input): XLSX.WorkBook {
     Kode: r.code,
     Item: r.name,
     Satuan: r.uom,
-    "Qty/bln": r.qty,
+    "Qty": r.qty,
     "Harga satuan": Math.round(r.prices[scenario]),
     "Total per bulan": Math.round(r.prices[scenario] * r.qty),
   }));

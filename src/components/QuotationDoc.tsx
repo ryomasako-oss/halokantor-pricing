@@ -113,7 +113,7 @@ export function QuotationDoc({
               <th>No</th>
               <th className="l">Item</th>
               <th>Satuan</th>
-              <th>Qty/bln</th>
+              <th>Qty</th>
               <th>Harga satuan</th>
               <th>Total per bulan</th>
             </tr>
