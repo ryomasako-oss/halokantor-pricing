@@ -5,6 +5,15 @@ import type { DuplicateGroup } from "@shared/duplicates";
 import { Modal } from "./Modal";
 import { Icon } from "./Icon";
 
+/** "2 produk muncul lebih dari sekali", naming possible matches separately. */
+const headline = (groups: DuplicateGroup[], tail: string) => {
+  const exact = groups.filter((g) => !g.nameOnly).length;
+  const maybe = groups.length - exact;
+  return [exact && `${exact} produk ${tail}`, maybe && `${maybe} produk kemungkinan ${tail}`]
+    .filter(Boolean)
+    .join("; ");
+};
+
 const lineList = (g: DuplicateGroup, fresh?: Set<string>) =>
   g.lines
     .map((l) => (fresh?.has(l.id) ? `baru (${l.qty} ${l.uom})` : `baris ${l.lineNo} (${l.qty} ${l.uom})`))
@@ -13,8 +22,16 @@ const lineList = (g: DuplicateGroup, fresh?: Set<string>) =>
 function GroupRow({ group, fresh }: { group: DuplicateGroup; fresh?: Set<string> }) {
   return (
     <li>
-      <strong>{group.name}</strong> — {lineList(group, fresh)}
-      {group.mixedUom && <div className="small">Satuan berbeda: baris dengan satuan lain tidak digabung, cek manual.</div>}
+      <strong>{group.name}</strong>
+      {group.nameOnly && <span className="badge amber" style={{ marginLeft: 6 }}>kemungkinan</span>}
+      {" — "}{lineList(group, fresh)}
+      {group.nameOnly && (
+        <div className="small">
+          Nama sama, tapi ada baris tanpa kode barang. Cek apakah ini produk yang sama; kalau iya,
+          hapus salah satu baris dan sesuaikan qty. Tidak digabung otomatis.
+        </div>
+      )}
+      {!group.nameOnly && group.mixedUom && <div className="small">Satuan berbeda: baris dengan satuan lain tidak digabung, cek manual.</div>}
       {group.priceConflict && <div className="small">COGS/plafon/harga manual berbeda: yang dipakai baris pertama.</div>}
     </li>
   );
@@ -37,7 +54,7 @@ export function DuplicateBanner({
         <Icon name="alert" size={15} />
         <div className="grow">
           <div style={{ fontWeight: 600 }}>
-            {groups.length} produk muncul lebih dari sekali di quotation ini
+            {headline(groups, "muncul lebih dari sekali")} di quotation ini
           </div>
           <ul className="dup-list">
             {groups.map((g) => <GroupRow key={g.key} group={g} />)}
@@ -68,7 +85,7 @@ export function DuplicateAddModal({
   return (
     <Modal
       title="Produk sudah ada di quotation"
-      sub={`${groups.length} item yang kamu pilih sudah ada sebagai baris di quotation ini.`}
+      sub={`Dari item yang kamu pilih, ${headline(groups, "sudah ada")} sebagai baris di quotation ini.`}
       onClose={onClose}
       footer={
         <>
@@ -86,8 +103,10 @@ export function DuplicateAddModal({
         {groups.map((g) => <GroupRow key={g.key} group={g} fresh={incomingIds} />)}
       </ul>
       <p className="muted small" style={{ marginTop: 12 }}>
-        Gabungkan menjumlahkan qty ke baris yang sudah ada; COGS, plafon, peran, dan harga manual
-        baris itu tidak berubah. Item lain yang kamu pilih tetap ditambahkan seperti biasa.
+        {mergeable
+          ? "Gabungkan menjumlahkan qty ke baris yang sudah ada; COGS, plafon, peran, dan harga manual baris itu tidak berubah. "
+          : ""}
+        Item lain yang kamu pilih tetap ditambahkan seperti biasa.
       </p>
     </Modal>
   );

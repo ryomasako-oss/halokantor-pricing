@@ -8,7 +8,7 @@ import { computeEngine, SCENARIOS } from "@shared/engine";
 import { evaluatePolicy, isWithinPolicy } from "@shared/policy";
 import { fmtDateTime, pct, rp, uid } from "@shared/format";
 import {
-  BLANK_ITEM_NAME, findDuplicateGroups, incomingDuplicates, mergeDuplicates, normalizeCode,
+  BLANK_ITEM_NAME, findLineWarnings, incomingDuplicates, mergeDuplicates, normalizeCode,
 } from "@shared/duplicates";
 import type {
   Client,
@@ -278,7 +278,7 @@ export function QuoteEditorPage() {
     setModal(null);
   };
 
-  const duplicateGroups = findDuplicateGroups(snapshot.items);
+  const duplicateGroups = findLineWarnings(snapshot.items);
 
   const mergeAllDuplicates = () => {
     const before = snapshot.items.length;

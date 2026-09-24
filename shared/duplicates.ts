@@ -7,8 +7,10 @@
    and the approver. These helpers find such lines and fold them into one.
 
    Identity is the item code. Only when a line has no code do we fall back
-   to its name, and a coded line never matches an uncoded one by name
-   alone: that match would be too loose to act on.
+   to its name. A coded line and an uncoded line with the same name (an
+   imported client row next to the same product picked from the catalog)
+   are reported as a *possible* duplicate but never merged: a shared name
+   is too loose to act on automatically.
 
    Lines of one product in different units (5 Lusin next to 10 Pcs) are
    reported but never merged — adding their quantities would be wrong.
@@ -44,6 +46,8 @@ export interface DuplicateGroup {
   mixedUom: boolean;
   /** Lines that would merge disagree on COGS, RRP or manual price. */
   priceConflict: boolean;
+  /** Matched only by name between coded and uncoded lines; warn, never merge. */
+  nameOnly: boolean;
 }
 
 const bucketBy = <T>(xs: T[], key: (x: T) => string | null) => {
@@ -79,9 +83,43 @@ export function findDuplicateGroups(items: QuoteItem[]): DuplicateGroup[] {
       mergeable: mergeSets.length > 0,
       mixedUom: units.length > 1,
       priceConflict: mergeSets.some((set) => set.some((l) => !samePrices(set[0], l))),
+      nameOnly: false,
     });
   }
   return groups;
+}
+
+const nameKey = (item: Pick<QuoteItem, "name">) => {
+  const name = norm(item.name);
+  return name && name !== norm(BLANK_ITEM_NAME) ? name : null;
+};
+
+/**
+ * Lines without a code whose name matches a line that has one. These are
+ * likely the same product, typically a client-list import alongside a catalog
+ * pick, but only the user can tell, so they are never merged.
+ */
+export function findPossibleDuplicates(items: QuoteItem[]): DuplicateGroup[] {
+  const groups: DuplicateGroup[] = [];
+  for (const [key, lines] of bucketBy(items, nameKey)) {
+    const coded = lines.filter((l) => norm(l.code));
+    if (!coded.length || coded.length === lines.length) continue;
+    groups.push({
+      key: `maybe:${key}`,
+      name: lines[0].name,
+      lines,
+      mergeable: false,
+      mixedUom: byUom(lines).size > 1,
+      priceConflict: false,
+      nameOnly: true,
+    });
+  }
+  return groups;
+}
+
+/** Everything worth telling the user about: exact duplicates, then possible ones. */
+export function findLineWarnings(items: QuoteItem[]): DuplicateGroup[] {
+  return [...findDuplicateGroups(items), ...findPossibleDuplicates(items)];
 }
 
 /**
@@ -123,10 +161,10 @@ export function mergeDuplicates(items: QuoteItem[], onlyKeys?: Set<string>): Quo
   return items.filter((it) => !absorbed.has(it.id)).map((it) => replaced.get(it.id) ?? it);
 }
 
-/** Duplicate groups that involve at least one of the `incoming` lines. */
+/** Exact and possible duplicates that involve at least one `incoming` line. */
 export function incomingDuplicates(existing: QuoteItem[], incoming: QuoteItem[]): DuplicateGroup[] {
   const ids = new Set(incoming.map((i) => i.id));
-  return findDuplicateGroups([...existing, ...incoming]).filter((g) =>
+  return findLineWarnings([...existing, ...incoming]).filter((g) =>
     g.lines.some((l) => ids.has(l.id)),
   );
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  findDuplicateGroups, incomingDuplicates, mergeDuplicates, mergeLines, productKey,
+  findDuplicateGroups, findLineWarnings, findPossibleDuplicates, incomingDuplicates,
+  mergeDuplicates, mergeLines, productKey,
 } from "./duplicates.js";
 import type { QuoteItem } from "./types.js";
 
@@ -139,5 +140,46 @@ describe("incomingDuplicates", () => {
     const incoming = [item({ code: "atk-001" }), item({ code: "NEW" })];
     const groups = incomingDuplicates(existing, incoming);
     expect(groups.map((g) => g.key)).toEqual(["code:atk-001"]);
+  });
+});
+
+describe("findPossibleDuplicates (uncoded line named like a coded one)", () => {
+  // The real workflow: a client list imported without codes, then the same
+  // product picked from the catalog with its code.
+  const imported = (over: Partial<QuoteItem> = {}) =>
+    item({ code: "", name: "kertas  a4 80GR ", estCogs: true, cogs: 38000, ...over });
+
+  it("flags an uncoded line whose normalized name matches a coded line", () => {
+    const coded = item({ name: "Kertas A4 80gr" }), raw = imported();
+    const groups = findPossibleDuplicates([raw, coded]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ nameOnly: true, mergeable: false });
+    expect(groups[0].lines.map((l) => l.id)).toEqual([raw.id, coded.id]);
+  });
+
+  it("is not triggered by coded lines alone, uncoded lines alone, or blanks", () => {
+    expect(findPossibleDuplicates([item({ code: "A", name: "Map" }), item({ code: "B", name: "Map" })])).toEqual([]);
+    expect(findPossibleDuplicates([imported(), imported()])).toEqual([]);
+    expect(findPossibleDuplicates([item({ name: "Item baru" }), item({ code: "", name: "Item baru" })])).toEqual([]);
+  });
+
+  it("does not fire when the names differ at all", () => {
+    expect(findPossibleDuplicates([item({ name: "Kertas A4 80gr" }), imported({ name: "Kertas HVS A4" })])).toEqual([]);
+  });
+
+  it("is never merged, even by a merge-everything call", () => {
+    const items = [item({ name: "Kertas A4 80gr" }), imported()];
+    expect(mergeDuplicates(items)).toEqual(items);
+  });
+
+  it("is reported next to exact duplicates by findLineWarnings", () => {
+    const warnings = findLineWarnings([item({ name: "Kertas A4 80gr" }), item({ name: "Kertas A4 80gr" }), imported()]);
+    expect(warnings.map((g) => [g.nameOnly, g.lines.length])).toEqual([[false, 2], [true, 3]]);
+  });
+
+  it("is reported when a catalog pick matches an imported line", () => {
+    const groups = incomingDuplicates([imported()], [item({ name: "Kertas A4 80gr" })]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].nameOnly).toBe(true);
   });
 });
