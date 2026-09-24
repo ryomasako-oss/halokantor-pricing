@@ -7,6 +7,9 @@ import { useUnsavedGuard } from "../context/UnsavedGuardContext";
 import { computeEngine, SCENARIOS } from "@shared/engine";
 import { evaluatePolicy, isWithinPolicy } from "@shared/policy";
 import { fmtDateTime, pct, rp, uid } from "@shared/format";
+import {
+  BLANK_ITEM_NAME, findDuplicateGroups, incomingDuplicates, mergeDuplicates, normalizeCode,
+} from "@shared/duplicates";
 import type {
   Client,
   PolicyBreach,
@@ -24,6 +27,7 @@ import { ItemsTable } from "../components/ItemsTable";
 import { QuotationDoc, type CompanyInfo } from "../components/QuotationDoc";
 import { CatalogPicker } from "../components/CatalogPicker";
 import { ImportDialog } from "../components/ImportDialog";
+import { DuplicateAddModal, DuplicateBanner } from "../components/Duplicates";
 import { AssistantPanel, applyActions, type AssistantAction } from "../components/AssistantPanel";
 import {
   BreachList, CompareTable, DeliveryTable, LEVERS, Lever, ScenarioCards, StatusChip,
@@ -253,7 +257,7 @@ export function QuoteEditorPage() {
       items: renumber([
         ...snapshot.items,
         {
-          id: uid(), lineNo: 0, code: "", name: "Item baru", uom: "Pcs",
+          id: uid(), lineNo: 0, code: "", name: BLANK_ITEM_NAME, uom: "Pcs",
           qty: 1, cogs: 0, rrp: 0, role: "CORE", estCogs: true,
         },
       ]),
@@ -261,6 +265,27 @@ export function QuoteEditorPage() {
 
   const addItems = (items: QuoteItem[]) =>
     update({ items: renumber([...snapshot.items, ...items]) });
+
+  // Catalog picks that match a line already on the quote get a merge-or-keep
+  // prompt instead of silently becoming a second line for the same product.
+  const addFromCatalog = (items: QuoteItem[]) => {
+    const groups = incomingDuplicates(snapshot.items, items);
+    if (groups.length) {
+      setModal({ kind: "duplicates", payload: items });
+      return;
+    }
+    addItems(items);
+    setModal(null);
+  };
+
+  const duplicateGroups = findDuplicateGroups(snapshot.items);
+
+  const mergeAllDuplicates = () => {
+    const before = snapshot.items.length;
+    const items = renumber(mergeDuplicates(snapshot.items));
+    update({ items });
+    toast(`${before - items.length} baris duplikat digabungkan. Jangan lupa simpan.`, "success");
+  };
 
   // Pushes one item's corrected COGS/RRP back into the shared catalog master
   // (matched by code). Explicit and per-row, so a one-off deal price never
@@ -445,6 +470,13 @@ export function QuoteEditorPage() {
             </div>
 
             <div className="card-body">
+              {tab === "items" && (
+                <DuplicateBanner
+                  groups={duplicateGroups}
+                  readOnly={readOnly}
+                  onMerge={mergeAllDuplicates}
+                />
+              )}
               {tab === "items" && (
                 <ItemsTable
                   engine={engine}
@@ -718,10 +750,35 @@ export function QuoteEditorPage() {
       {modal?.kind === "catalog" && (
         <CatalogPicker
           onClose={() => setModal(null)}
-          onAdd={addItems}
-          existingCodes={new Set(snapshot.items.map((i) => i.code).filter(Boolean))}
+          onAdd={addFromCatalog}
+          existingCodes={new Set(snapshot.items.map((i) => normalizeCode(i.code)).filter(Boolean))}
         />
       )}
+
+      {modal?.kind === "duplicates" && (() => {
+        const incoming = modal.payload as QuoteItem[];
+        const incomingIds = new Set(incoming.map((i) => i.id));
+        const groups = incomingDuplicates(snapshot.items, incoming);
+        return (
+          <DuplicateAddModal
+            groups={groups}
+            incomingIds={incomingIds}
+            onClose={() => setModal(null)}
+            onAddSeparate={() => {
+              addItems(incoming);
+              setModal(null);
+            }}
+            onMerge={() => {
+              const keys = new Set(groups.map((g) => g.key));
+              const before = snapshot.items.length + incoming.length;
+              const items = renumber(mergeDuplicates([...snapshot.items, ...incoming], keys));
+              update({ items });
+              setModal(null);
+              toast(`${before - items.length} item digabungkan ke baris yang sudah ada.`, "success");
+            }}
+          />
+        );
+      })()}
 
       {modal?.kind === "import" && (
         <ImportDialog

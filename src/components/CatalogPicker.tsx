@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { grp } from "@shared/format";
+import { normalizeCode } from "@shared/duplicates";
 import type { CatalogItem, QuoteItem } from "@shared/types";
 import { Modal } from "./Modal";
 import { Icon } from "./Icon";
@@ -14,7 +15,9 @@ export function CatalogPicker({
   existingCodes,
 }: {
   onClose: () => void;
+  /** Receives the picks; the parent closes (or replaces) this dialog. */
   onAdd: (items: QuoteItem[]) => void;
+  /** Codes already on the quote, normalized with `normalizeCode`. */
   existingCodes: Set<string>;
 }) {
   const [query, setQuery] = useState("");
@@ -84,7 +87,6 @@ export function CatalogPicker({
       })
       .filter(Boolean) as QuoteItem[];
     onAdd(picked);
-    onClose();
   };
 
   return (
@@ -150,7 +152,7 @@ export function CatalogPicker({
                     <div className="muted small">
                       {item.code}
                       {item.category ? ` · ${item.category}` : ""}
-                      {existingCodes.has(item.code) && (
+                      {existingCodes.has(normalizeCode(item.code)) && (
                         <span className="badge amber" style={{ marginLeft: 6 }}>sudah ada</span>
                       )}
                     </div>

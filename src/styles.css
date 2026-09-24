@@ -301,6 +301,8 @@ a { color: var(--navy); }
 .notice.error { background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-rule); }
 .notice.ok { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-bg); }
 .notice.info { background: var(--soft); color: var(--muted); border: 1px solid var(--rule); }
+.dup-banner { margin-bottom: 12px; }
+.dup-list { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
 
 .empty { text-align: center; padding: 34px 16px; color: var(--muted); }
 .empty h3 { margin: 10px 0 4px; font-size: 15px; color: var(--ink); }
