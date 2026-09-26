@@ -314,6 +314,8 @@ Small variant drops padding to `4px 10px` for inline table actions.
 ### Tables
 Sticky, right-aligned headers on `{colors.soft}`; rows separated by hairline `#EEF1F4`; hover tint `#FAFBFC`; policy-flagged rows tint `#FFF9EC`. Editable price cells (`data-cell`) get their own soft fill, switch to white with a navy border on focus, and an amber tint (`cell.est`) when a value is system-estimated rather than sourced from Accurate.
 
+**Unit (UOM) cells** follow the same rules: the unit select is a plain data-entry `cell` (like Role), in a left-aligned column right after Qty, so a row reads "20 Pak". A flag about the unit goes *under* the value as an amber `badge` ("Tanpa rasio", full reason in the tooltip), exactly like "Di plafon" under a scenario price. Any action on it is a tiny `icon-btn`, never inline link text. One shared component (`UomCell`) renders this in both the items table and the catalog picker. Unit conversions shown as data ("1 Box = 24 Pcs") are grey badges, and always name both units.
+
 ### Status & Semantic Chips
 **`status-chip`** — pill, 11–12px/650, one of six fixed states: draft (grey), submitted (amber), approved (green), rejected (red), sent (blue), won (filled green). **`badge`** — smaller square-radius sibling used inline in text/tables for the same six-color semantic vocabulary.
 

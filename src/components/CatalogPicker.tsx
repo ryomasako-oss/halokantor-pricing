@@ -9,6 +9,7 @@ import type { CatalogItem, QuoteItem } from "@shared/types";
 import { changeLineUom, uomChoices, uomWarning } from "@shared/uom";
 import { Modal } from "./Modal";
 import { Icon } from "./Icon";
+import { UomCell } from "./UomCell";
 
 export function CatalogPicker({
   onClose,
@@ -149,7 +150,7 @@ export function CatalogPicker({
                 <th>COGS</th>
                 <th>Harga jual</th>
                 <th>Stok</th>
-                <th>Satuan</th>
+                <th className="l">Satuan</th>
                 <th>Qty</th>
               </tr>
             </thead>
@@ -172,26 +173,14 @@ export function CatalogPicker({
                   <td className="num">{item.cogs > 0 ? grp(line.cogs) : <span className="muted">—</span>}</td>
                   <td className="num">{item.list_price > 0 ? grp(line.rrp) : <span className="muted">—</span>}</td>
                   <td className="num muted">{grp(item.stock)}</td>
-                  <td className="c">
-                    {uomOptions.length === 0 ? (
-                      <span className="muted small">{item.uom || "Pcs"}</span>
-                    ) : (
-                      <select
-                        className="cell uom"
-                        value={uomOverride[item.id] ?? (item.uom || "Pcs")}
-                        onChange={(e) => setUomOverride((u) => ({ ...u, [item.id]: e.target.value }))}
-                        aria-label={`Satuan ${item.name}`}
-                      >
-                        {uomChoices(uomOptions, { baseUom: item.uom || "Pcs", units: item.units ?? [] }, item.uom || "Pcs").map((u) => (
-                          <option key={u} value={u}>{u}</option>
-                        ))}
-                      </select>
-                    )}
-                    {warn && (
-                      <div className="small uom-warn" title={warn}>
-                        <Icon name="alert" size={12} /> Rasio belum ada
-                      </div>
-                    )}
+                  <td className="l">
+                    <UomCell
+                      value={line.uom}
+                      choices={uomOptions.length ? uomChoices(uomOptions, { baseUom: item.uom || "Pcs", units: item.units ?? [] }, line.uom) : []}
+                      label={`Satuan ${item.name}`}
+                      warning={warn}
+                      onChange={(u) => setUomOverride((o) => ({ ...o, [item.id]: u }))}
+                    />
                   </td>
                   <td>
                     <input

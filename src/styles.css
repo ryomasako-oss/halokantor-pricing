@@ -338,8 +338,11 @@ a { color: var(--navy); }
 .cell:hover { border-color: var(--rule); }
 .cell:focus { border-color: var(--navy); background: var(--field); outline: 0; }
 .cell.l { text-align: left; width: 100%; min-width: 120px; }
-.cell.uom { width: auto; text-align: left; font-size: 12px; padding: 2px 4px; }
-.uom-warn { color: var(--warn); display: flex; align-items: center; gap: 3px; margin-top: 3px; white-space: nowrap; cursor: help; }
+/* A badge (+ optional tiny action) under a cell's value, like "Di plafon". */
+.cell-sub { display: flex; align-items: center; gap: 2px; margin-top: 3px; white-space: nowrap; }
+.cell-sub .badge { cursor: help; }
+.icon-btn.xs { padding: 2px; }
+.cell-sub .icon-btn { color: var(--warn); }
 .cell.est { background: var(--warn-bg); }
 .cell.manual { background: var(--s1-bg); font-weight: 650; }
 select.cell { text-align: left; width: 88px; }

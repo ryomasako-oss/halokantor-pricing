@@ -7,6 +7,7 @@ import { grp, pct } from "@shared/format";
 import type { ComputedRow, EngineResult, ItemRole, QuoteItem, ScenarioIndex } from "@shared/types";
 import { uomChoices, uomWarning, type ItemUnits } from "@shared/uom";
 import { Icon } from "./Icon";
+import { UomCell } from "./UomCell";
 import { LineBadge } from "./pricing";
 
 interface Props {
@@ -158,7 +159,7 @@ export function ItemsTable({
                 {head("lineNo", "No", "c")}
                 {head("name", "Item", "l", 230)}
                 {head("qty", "Qty")}
-                <th>UOM</th>
+                <th className="l">UOM</th>
                 {head("cogs", "COGS")}
                 {head("rrp", "RRP")}
                 <th>Role S2</th>
@@ -211,40 +212,20 @@ export function ItemsTable({
                         aria-label={`Qty ${r.name}`}
                       />
                     </td>
-                    <td>
-                      {readOnly || uomOptions.length === 0 ? (
-                        <div className="nowrap">{r.uom}</div>
-                      ) : (
-                        <select
-                          className="cell uom"
-                          value={r.uom}
-                          disabled={unitsPending(r.code)}
-                          onChange={(e) => onChangeUom(r.id, e.target.value)}
-                          aria-label={`Satuan ${r.name}`}
-                        >
-                          {uomChoices(uomOptions, unitsByCode[r.code.trim()], r.uom).map((u) => (
-                            <option key={u} value={u}>{u}</option>
-                          ))}
-                        </select>
-                      )}
-                      {uomWarning(r) && (
-                        <div className="small uom-warn" title={uomWarning(r)!}>
-                          <Icon name="alert" size={12} /> Rasio belum ada
-                          {!readOnly && (
-                            /* Explicit, not implied by editing COGS: fixing
-                               only COGS would leave RRP (the client ceiling)
-                               silently in the old unit. */
-                            <button
-                              type="button"
-                              className="link-btn"
-                              onClick={() => onUpdate(r.id, { priceUom: undefined })}
-                              title={`COGS dan RRP sudah dicek dan benar per ${r.uom}`}
-                            >
-                              Sudah dicek
-                            </button>
-                          )}
-                        </div>
-                      )}
+                    <td className="l">
+                      <UomCell
+                        value={r.uom}
+                        choices={uomOptions.length ? uomChoices(uomOptions, unitsByCode[r.code.trim()], r.uom) : []}
+                        label={`Satuan ${r.name}`}
+                        readOnly={readOnly}
+                        disabled={unitsPending(r.code)}
+                        warning={uomWarning(r)}
+                        onChange={(u) => onChangeUom(r.id, u)}
+                        /* Explicit, not implied by editing COGS: fixing only
+                           COGS would leave RRP (the client ceiling) silently
+                           in the old unit. */
+                        onConfirm={readOnly ? undefined : () => onUpdate(r.id, { priceUom: undefined })}
+                      />
                     </td>
                     <td>
                       <input
