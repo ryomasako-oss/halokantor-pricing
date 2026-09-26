@@ -1,5 +1,5 @@
 {
-  "name": "halokantor-pricing-agent",
+  "name": "pricing-engine-salvator-agent",
   "version": "0.1.0",
   "private": true,
   "bin": "src/cli.ts",

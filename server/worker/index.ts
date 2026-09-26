@@ -1,5 +1,5 @@
 /* ============================================================
-   Halokantor Pricing — Cloudflare Workers entry point.
+   Pricing Engine Salvator — Cloudflare Workers entry point.
    The built SPA is served by Workers Assets (see wrangler.toml);
    this Worker only ever sees /api/* (via `run_worker_first`).
    ============================================================ */

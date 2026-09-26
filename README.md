@@ -1,4 +1,4 @@
-# Halokantor Pricing
+# Pricing Engine Salvator
 
 Mesin harga dan quotation B2B untuk **PT Salvator Inti Pratama**. Satu aplikasi
 untuk menyusun penawaran kontrak ATK: menarik harga pokok dari data Accurate,
@@ -74,12 +74,12 @@ Satu proses Node menyajikan API sekaligus aplikasi webnya.
 ### Docker
 
 ```bash
-docker build -t halokantor-pricing .
+docker build -t pricing-engine-salvator .
 docker run -d -p 8787:8787 \
   -e JWT_SECRET="$(openssl rand -hex 32)" \
   -e ANTHROPIC_API_KEY=sk-ant-... \
   -v halokantor-data:/app/data \
-  halokantor-pricing
+  pricing-engine-salvator
 ```
 
 Basis data SQLite ada di `/app/data`. **Volume itu wajib dipasang**, kalau tidak

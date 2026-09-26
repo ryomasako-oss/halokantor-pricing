@@ -185,7 +185,7 @@ components:
 
 ## Overview
 
-Halokantor Pricing is a working document, not a marketing surface — a sales rep opens it to build a quotation, a manager opens it to decide whether to approve one. The design language follows from that job: a warm paper-grey (`{colors.paper}` `#F1F4F7`) canvas holds white sheet-like cards (`{colors.sheet}`), everything sits on hairline rules instead of shadows, and the only saturated color that means "action" or "authority" is deep navy (`{colors.navy}` `#1F3A5F`). Numbers always render tabular so columns of harga pokok, margin, and RRP line up like a real ledger.
+Pricing Engine Salvator is a working document, not a marketing surface — a sales rep opens it to build a quotation, a manager opens it to decide whether to approve one. The design language follows from that job: a warm paper-grey (`{colors.paper}` `#F1F4F7`) canvas holds white sheet-like cards (`{colors.sheet}`), everything sits on hairline rules instead of shadows, and the only saturated color that means "action" or "authority" is deep navy (`{colors.navy}` `#1F3A5F`). Numbers always render tabular so columns of harga pokok, margin, and RRP line up like a real ledger.
 
 The one deliberate flourish is the **three-scenario system**. Every quotation computes S1 Full Margin, S2 Cross Subsidise, and S3 RRP Discount side by side, and each gets a fixed identity color — steel blue, teal, violet — that never changes meaning anywhere in the app: a left border on a card, a fill on a meter, a rule under a total. A rep should be able to tell which scenario a number belongs to without reading the label.
 

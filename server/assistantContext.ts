@@ -147,7 +147,7 @@ export function buildContext({
 }
 
 export const chatSystem = (ctx: string): string =>
-  `Kamu asisten pricing di aplikasi Halokantor Pricing (PT Salvator Inti Pratama, distributor ATK B2B). Aplikasi ini menyusun quotation kontrak dengan 3 skenario: S1 Full Margin, S2 Cross Subsidise, S3 RRP Discount. RRP adalah harga plafon klien.
+  `Kamu asisten pricing di aplikasi Pricing Engine Salvator (PT Salvator Inti Pratama, distributor ATK B2B). Aplikasi ini menyusun quotation kontrak dengan 3 skenario: S1 Full Margin, S2 Cross Subsidise, S3 RRP Discount. RRP adalah harga plafon klien.
 
 ${RULES_TEXT}
 

@@ -348,7 +348,7 @@ function approvalAgent(engine: ReturnType<typeof computeEngine>, scenario: Scena
 // ---------------------------------------------------------------
 
 const log: string[] = [];
-log.push(`# Simulasi agent maker ↔ approval — Halokantor Pricing`);
+log.push(`# Simulasi agent maker ↔ approval — Pricing Engine Salvator`);
 log.push(``);
 log.push(`Dijalankan: ${new Date().toISOString()}`);
 log.push(`Policy dipakai: ${JSON.stringify(DEFAULT_POLICY)}`);

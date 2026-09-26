@@ -1,4 +1,4 @@
-# Halokantor Pricing Agent
+# Pricing Engine Salvator Agent
 
 Service terpisah dari aplikasi utama `pricing.salvator.co.id`. Bertugas membaca data kutipan dari API halokantor (read-only), menyimpannya di knowledge store SQLite lokal, mendeteksi industri dari item mix, dan merekomendasikan penawaran mirip berdasarkan pola historis.
 

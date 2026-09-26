@@ -30,7 +30,7 @@ export function LoginPage() {
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit}>
         <span className="hk-logo" aria-hidden="true">h</span>
-        <h1>Halokantor Pricing</h1>
+        <h1>Pricing Engine Salvator</h1>
         <p className="sub">Mesin harga dan quotation B2B, PT Salvator Inti Pratama.</p>
 
         <div className="col" style={{ gap: 12 }}>

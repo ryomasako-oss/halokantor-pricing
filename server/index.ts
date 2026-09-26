@@ -1,5 +1,5 @@
 /* ============================================================
-   Halokantor Pricing — API server.
+   Pricing Engine Salvator — API server.
    In production it also serves the built single-page client, so the
    whole product runs as one Node process behind one port.
    ============================================================ */
@@ -119,7 +119,7 @@ app.use(
 ensureSeed();
 
 app.listen(port, () => {
-  console.log(`\n  Halokantor Pricing`);
+  console.log(`\n  Pricing Engine Salvator`);
   console.log(`  API      http://localhost:${port}/api`);
   console.log(`  Mode     ${isProd ? "production" : "development"}`);
   console.log(`  Asisten  ${assistantEnabled() ? "aktif" : "nonaktif (ANTHROPIC_API_KEY kosong)"}`);

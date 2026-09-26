@@ -1,5 +1,5 @@
 /* ============================================================
-   Halokantor Pricing Agent — HTTP service entry point.
+   Pricing Engine Salvator Agent — HTTP service entry point.
 
    Service terpisah dari app utama (pricing.salvator.co.id).
    Menyediakan:
@@ -259,7 +259,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Halokantor Pricing Agent listening on http://localhost:${PORT}`);
+  console.log(`Pricing Engine Salvator Agent listening on http://localhost:${PORT}`);
   console.log(`  Gemini:    ${gemini ? "terkonfigurasi" : "tidak (set GEMINI_API_KEY)"}`);
   console.log(`  Gmail:     ${gmail ? "terkonfigurasi" : "tidak (set GOOGLE_SERVICE_ACCOUNT_*)"}`);
   console.log(`  API base:  ${HALOKANTOR_API_BASE}`);
