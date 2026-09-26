@@ -35,7 +35,15 @@ export const itemSchema = z.object({
   estCogs: z.boolean().optional(),
   manualPrice: z.array(z.number().nullable()).length(3).optional(),
   notes: z.string().max(500).optional(),
+  priceUom: z.string().max(32).optional(),
 });
+
+/** One extra unit of a catalog item: `factor` base units per `uom`. */
+export const unitFactorSchema = z.object({
+  uom: z.string().trim().min(1).max(32),
+  factor: z.number().positive().max(1_000_000),
+});
+export const unitsSchema = z.array(unitFactorSchema).max(10);
 
 export const regionSchema = z.object({
   id: z.string().min(1).max(64),
@@ -106,6 +114,8 @@ export const catalogRowSchema = z.object({
   list_price: z.number().min(0).max(1e12).optional(),
   stock: z.number().min(-1e9).max(1e9).optional(),
   category: z.string().max(120).optional(),
+  /** When present, replaces the item's extra units. Absent leaves them untouched. */
+  units: unitsSchema.optional(),
 });
 
 export const profileSchema = z.object({

@@ -3,12 +3,48 @@ import { z } from "zod";
 import { all, get, run, stmt, batch } from "../../db.d1";
 import { audit } from "../audit";
 import { requireAuth, requirePermission } from "../auth";
-import { catalogRowSchema, zodMessage } from "../../validate";
-import type { CatalogItem } from "../../../shared/types";
+import { catalogRowSchema, unitsSchema, zodMessage } from "../../validate";
+import { cleanUnits, type ItemUnits } from "../../../shared/uom";
+import type { CatalogItem, UnitFactor } from "../../../shared/types";
 import type { Env } from "../env";
 
 export const catalogRouter = new Hono<Env>();
 catalogRouter.use(requireAuth);
+
+const CHUNK = 90;
+function chunks<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/** Extra units per code, for the given codes. */
+async function unitsByCode(db: D1Database, codes: string[]): Promise<Map<string, UnitFactor[]>> {
+  const map = new Map<string, UnitFactor[]>();
+  for (const chunk of chunks(codes, CHUNK)) {
+    const rows = await all<{ code: string; uom: string; factor: number }>(
+      db,
+      `SELECT code, uom, factor FROM catalog_item_uoms
+        WHERE code IN (${chunk.map(() => "?").join(",")}) ORDER BY factor`,
+      ...chunk,
+    );
+    for (const r of rows) {
+      if (!map.has(r.code)) map.set(r.code, []);
+      map.get(r.code)!.push({ uom: r.uom, factor: r.factor });
+    }
+  }
+  return map;
+}
+
+/** Statements that replace one item's extra units, for inclusion in a batch. */
+function replaceUnitsStmts(db: D1Database, code: string, baseUom: string | undefined, units: UnitFactor[]) {
+  return [
+    stmt(db, "DELETE FROM catalog_item_uoms WHERE code = ?", code),
+    ...cleanUnits(baseUom, units).map((u) =>
+      stmt(db, "INSERT INTO catalog_item_uoms(code, uom, factor) VALUES(?, ?, ?)", code, u.uom, u.factor),
+    ),
+  ];
+}
 
 catalogRouter.get("/", async (c) => {
   const q = c.req.query("q")?.trim() ?? "";
@@ -44,10 +80,34 @@ catalogRouter.get("/", async (c) => {
     limit,
     offset,
   );
-  return c.json({ items, total: total?.n ?? 0 });
+  const units = await unitsByCode(c.env.DB, items.map((i) => i.code));
+  return c.json({ items: items.map((i) => ({ ...i, units: units.get(i.code) ?? [] })), total: total?.n ?? 0 });
 });
 
-/** Managed UOM list (labels only, no unit-conversion math) — any manager/admin can extend it. */
+/**
+ * Base unit + extra units for the codes on a quote, so the editor can convert
+ * COGS/RRP when a line's unit changes. Codes not in the catalog are omitted.
+ */
+catalogRouter.post("/units", async (c) => {
+  const parsed = z
+    .object({ codes: z.array(z.string().trim().min(1).max(64)).max(2000) })
+    .safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: zodMessage(parsed.error) }, 400);
+  const codes = [...new Set(parsed.data.codes)];
+  const out: Record<string, ItemUnits> = {};
+  for (const chunk of chunks(codes, CHUNK)) {
+    const bases = await all<{ code: string; uom: string }>(
+      c.env.DB,
+      `SELECT code, uom FROM catalog_items WHERE code IN (${chunk.map(() => "?").join(",")})`,
+      ...chunk,
+    );
+    const units = await unitsByCode(c.env.DB, bases.map((b) => b.code));
+    for (const b of bases) out[b.code] = { baseUom: b.uom, units: units.get(b.code) ?? [] };
+  }
+  return c.json({ units: out });
+});
+
+/** Managed UOM list — any manager/admin can extend it. Per-item ratios live in catalog_item_uoms. */
 catalogRouter.get("/uom", async (c) => {
   const options = await all<{ id: number; name: string }>(c.env.DB, "SELECT id, name FROM uom_options ORDER BY name");
   return c.json({ options });
@@ -80,13 +140,6 @@ catalogRouter.get("/stats", async (c) => {
   return c.json({ stats });
 });
 
-const CHUNK = 90;
-function chunks<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
-}
-
 /**
  * Bulk upsert from a parsed spreadsheet. The client does the XLSX parsing and
  * posts plain rows, so the server never handles uploaded binaries.
@@ -112,19 +165,26 @@ catalogRouter.post("/import", requirePermission("import_catalog"), async (c) => 
   if (!parsed.success) return c.json({ error: zodMessage(parsed.error) }, 400);
   const { rows, source, mode } = parsed.data;
 
-  if (mode === "replace") await run(c.env.DB, "DELETE FROM catalog_items");
+  if (mode === "replace") {
+    await batch(c.env.DB, [
+      stmt(c.env.DB, "DELETE FROM catalog_item_uoms"),
+      stmt(c.env.DB, "DELETE FROM catalog_items"),
+    ]);
+  }
 
   const codes = [...new Set(rows.map((r) => r.code.trim()).filter(Boolean))];
-  const existing = new Set<string>();
+  // code -> current base unit, so units can be cleaned against it when a
+  // row doesn't send its own uom (same as the Express twin).
+  const existing = new Map<string, string>();
   if (mode === "merge") {
     for (const chunk of chunks(codes, CHUNK)) {
       const placeholders = chunk.map(() => "?").join(",");
-      const found = await all<{ code: string }>(
+      const found = await all<{ code: string; uom: string }>(
         c.env.DB,
-        `SELECT code FROM catalog_items WHERE code IN (${placeholders})`,
+        `SELECT code, uom FROM catalog_items WHERE code IN (${placeholders})`,
         ...chunk,
       );
-      for (const f of found) existing.add(f.code);
+      for (const f of found) existing.set(f.code, f.uom);
     }
   }
 
@@ -147,22 +207,27 @@ catalogRouter.post("/import", requirePermission("import_catalog"), async (c) => 
   let updated = 0;
   const validRows = rows.filter((r) => r.code.trim());
   for (const chunk of chunks(validRows, CHUNK)) {
-    const statements = chunk.map((r) => {
+    const statements = chunk.flatMap((r) => {
       const code = r.code.trim();
       if (mode === "replace" || !existing.has(code)) inserted++;
       else updated++;
-      return stmt(
-        c.env.DB,
-        UPSERT,
-        code,
-        r.name,
-        r.uom ?? "",
-        r.cogs ?? 0,
-        r.list_price ?? 0,
-        r.stock ?? null,
-        r.category ?? "",
-        source,
-      );
+      return [
+        stmt(
+          c.env.DB,
+          UPSERT,
+          code,
+          r.name,
+          r.uom ?? "",
+          r.cogs ?? 0,
+          r.list_price ?? 0,
+          r.stock ?? null,
+          r.category ?? "",
+          source,
+        ),
+        ...(r.units
+          ? replaceUnitsStmts(c.env.DB, code, r.uom || existing.get(code) || "Pcs", r.units)
+          : []),
+      ];
     });
     await batch(c.env.DB, statements);
   }
@@ -182,24 +247,33 @@ catalogRouter.put("/:id", requirePermission("edit_catalog"), async (c) => {
       cogs: z.number().min(0),
       list_price: z.number().min(0),
       category: z.string().max(120).default(""),
+      units: unitsSchema.optional(),
     })
     .safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: zodMessage(parsed.error) }, 400);
   const d = parsed.data;
-  await run(
-    c.env.DB,
-    `UPDATE catalog_items SET name = ?, uom = ?, cogs = ?, list_price = ?, category = ?,
-            updated_at = datetime('now') WHERE id = ?`,
-    d.name, d.uom, d.cogs, d.list_price, d.category, id,
-  );
+  const code = (await get<{ code: string }>(c.env.DB, "SELECT code FROM catalog_items WHERE id = ?", id))?.code;
+  await batch(c.env.DB, [
+    stmt(
+      c.env.DB,
+      `UPDATE catalog_items SET name = ?, uom = ?, cogs = ?, list_price = ?, category = ?,
+              updated_at = datetime('now') WHERE id = ?`,
+      d.name, d.uom, d.cogs, d.list_price, d.category, id,
+    ),
+    ...(code && d.units ? replaceUnitsStmts(c.env.DB, code, d.uom, d.units) : []),
+  ]);
   await audit(c.env.DB, user.id, "catalog", id, "updated", d);
   const item = await get<CatalogItem>(c.env.DB, "SELECT * FROM catalog_items WHERE id = ?", id);
-  return c.json({ item });
+  const units = item ? (await unitsByCode(c.env.DB, [item.code])).get(item.code) ?? [] : [];
+  return c.json({ item: item && { ...item, units } });
 });
 
 catalogRouter.delete("/", requirePermission("delete_catalog"), async (c) => {
   const user = c.get("user")!;
-  const info = await run(c.env.DB, "DELETE FROM catalog_items");
+  const [, info] = await batch(c.env.DB, [
+    stmt(c.env.DB, "DELETE FROM catalog_item_uoms"),
+    stmt(c.env.DB, "DELETE FROM catalog_items"),
+  ]);
   await audit(c.env.DB, user.id, "catalog", 0, "cleared", { removed: info.meta.changes });
   return c.json({ ok: true, removed: info.meta.changes });
 });

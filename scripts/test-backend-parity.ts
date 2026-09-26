@@ -125,6 +125,7 @@ async function makeWorkerDriver(): Promise<Driver> {
     "0004_user_phone.sql",
     "0005_reassignment_and_restore.sql",
     "0006_uom_options.sql",
+    "0007_catalog_item_uoms.sql",
   ]) {
     sqlite.exec(readFileSync(path.join(migrationsDir, file), "utf8"));
   }
@@ -679,6 +680,143 @@ scenario("adding a duplicate UOM name is rejected -> 409", async (d) => {
   const manager = await loginCached(d, "manager@test.local", "password123");
   const dup = await d.api("POST", "/api/catalog/uom", { body: { name: "Pcs" }, session: manager });
   return { status: dup.status };
+});
+
+// --- Per-item unit ratios (catalog_item_uoms) ---
+
+const unitsOf = async (d: Driver, session: Session, codes: string[]) =>
+  (await d.api("POST", "/api/catalog/units", { body: { codes }, session })).json.units;
+
+scenario("import stores per-item units, cleaned (base dropped, case-insensitive dedup)", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const imp = await d.api("POST", "/api/catalog/import", {
+    body: {
+      rows: [
+        {
+          code: "U-SMB", name: "Sambal 275ml", uom: "BTL", cogs: 12000,
+          units: [{ uom: "BOX", factor: 24 }, { uom: "Box", factor: 12 }, { uom: "btl", factor: 1 }],
+        },
+        { code: "U-PEN", name: "Pulpen", uom: "Pcs", cogs: 1000 },
+      ],
+      mode: "merge",
+    },
+    session: manager,
+  });
+  const list = await d.api("GET", "/api/catalog?q=U-", { session: manager });
+  const listed = Object.fromEntries(
+    (list.json.items as { code: string; units: unknown }[]).map((i) => [i.code, i.units]),
+  );
+  const lookup = await unitsOf(d, manager, ["U-SMB", "U-PEN", "NOT-IN-CATALOG"]);
+  assert.deepEqual(lookup, {
+    "U-SMB": { baseUom: "BTL", units: [{ uom: "BOX", factor: 24 }] },
+    "U-PEN": { baseUom: "Pcs", units: [] },
+  });
+  assert.deepEqual(listed["U-SMB"], [{ uom: "BOX", factor: 24 }]);
+  return { status: imp.status, listed, lookup };
+});
+
+scenario("a rep can look up units but not import them", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const imp = await d.api("POST", "/api/catalog/import", {
+    body: { rows: [{ code: "U-REP", name: "X", units: [{ uom: "Box", factor: 2 }] }] },
+    session: rep,
+  });
+  const lookup = await d.api("POST", "/api/catalog/units", { body: { codes: ["U-SMB"] }, session: rep });
+  assert.equal(imp.status, 403);
+  assert.equal(lookup.status, 200);
+  return { importStatus: imp.status, lookupStatus: lookup.status };
+});
+
+scenario("import without units leaves existing units alone; an empty list clears them", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  await d.api("POST", "/api/catalog/import", {
+    body: { rows: [{ code: "U-KEEP", name: "Keep", uom: "Pcs", units: [{ uom: "Lusin", factor: 12 }] }] },
+    session: manager,
+  });
+  await d.api("POST", "/api/catalog/import", {
+    body: { rows: [{ code: "U-KEEP", name: "Keep", cogs: 500 }] },
+    session: manager,
+  });
+  const afterNoUnits = await unitsOf(d, manager, ["U-KEEP"]);
+  await d.api("POST", "/api/catalog/import", {
+    body: { rows: [{ code: "U-KEEP", name: "Keep", units: [] }] },
+    session: manager,
+  });
+  const afterEmpty = await unitsOf(d, manager, ["U-KEEP"]);
+  assert.deepEqual(afterNoUnits["U-KEEP"].units, [{ uom: "Lusin", factor: 12 }]);
+  assert.deepEqual(afterEmpty["U-KEEP"].units, []);
+  return { afterNoUnits, afterEmpty };
+});
+
+scenario("a units entry equal to the existing base is dropped even when the row sends no uom", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  await d.api("POST", "/api/catalog/import", {
+    body: { rows: [{ code: "U-BASE", name: "Base", uom: "Rim" }] },
+    session: manager,
+  });
+  await d.api("POST", "/api/catalog/import", {
+    body: { rows: [{ code: "U-BASE", name: "Base", units: [{ uom: "RIM", factor: 1 }, { uom: "Box", factor: 5 }] }] },
+    session: manager,
+  });
+  const units = await unitsOf(d, manager, ["U-BASE"]);
+  assert.deepEqual(units["U-BASE"], { baseUom: "Rim", units: [{ uom: "Box", factor: 5 }] });
+  return { units };
+});
+
+scenario("editing an item replaces its units; bad ratios are rejected (400)", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const list = await d.api("GET", "/api/catalog?q=U-PEN", { session: manager });
+  const id = list.json.items[0].id;
+  const body = { name: "Pulpen", uom: "Pcs", cogs: 1000, list_price: 1500, category: "" };
+  const ok = await d.api("PUT", `/api/catalog/${id}`, {
+    body: { ...body, units: [{ uom: "Box", factor: 24 }, { uom: "Lusin", factor: 12 }] },
+    session: manager,
+  });
+  const bad = await d.api("PUT", `/api/catalog/${id}`, {
+    body: { ...body, units: [{ uom: "Box", factor: 0 }] },
+    session: manager,
+  });
+  const repEdit = await d.api("PUT", `/api/catalog/${id}`, {
+    body: { ...body, units: [{ uom: "Box", factor: 99 }] },
+    session: rep,
+  });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.json.item.units, [{ uom: "Lusin", factor: 12 }, { uom: "Box", factor: 24 }]);
+  assert.equal(bad.status, 400);
+  assert.equal(repEdit.status, 403);
+  return {
+    okStatus: ok.status,
+    returnedUnits: ok.json.item.units,
+    badStatus: bad.status,
+    repStatus: repEdit.status,
+    stored: await unitsOf(d, manager, ["U-PEN"]),
+  };
+});
+
+scenario("a quote line's priceUom survives save and reload", async (d) => {
+  const rep = await loginCached(d, "rep@test.local", "password123");
+  const quote = await createDraft(d, rep, [cleanItem({ uom: "Box", priceUom: "rim" })]);
+  const detail = await d.api("GET", `/api/quotes/${quote.id}`, { session: rep });
+  assert.equal(detail.json.quote.items[0].priceUom, "rim");
+  return { priceUom: detail.json.quote.items[0].priceUom, uom: detail.json.quote.items[0].uom };
+});
+
+scenario("replace-mode import clears every item's units", async (d) => {
+  const manager = await loginCached(d, "manager@test.local", "password123");
+  await d.api("POST", "/api/catalog/import", {
+    body: { rows: [{ code: "U-NEW", name: "Fresh", uom: "Pcs" }], mode: "replace" },
+    session: manager,
+  });
+  const units = await unitsOf(d, manager, ["U-SMB", "U-PEN", "U-NEW"]);
+  assert.deepEqual(units, { "U-NEW": { baseUom: "Pcs", units: [] } });
+  const leftover = await d.api("POST", "/api/catalog/import", {
+    body: { rows: [{ code: "U-SMB", name: "Sambal again", uom: "BTL" }] },
+    session: manager,
+  });
+  assert.equal(leftover.status, 200);
+  assert.deepEqual((await unitsOf(d, manager, ["U-SMB"]))["U-SMB"].units, []);
+  return { units };
 });
 
 scenario('"mine" filter includes quotes reassigned to the viewer, not just ones they created', async (d) => {

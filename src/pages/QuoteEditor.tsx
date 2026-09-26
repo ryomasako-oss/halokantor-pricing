@@ -24,6 +24,7 @@ import { Icon } from "../components/Icon";
 import { Modal, ConfirmModal } from "../components/Modal";
 import { Rich } from "../components/Rich";
 import { ItemsTable } from "../components/ItemsTable";
+import { changeLineUom, priceUnitOf, toBaseUnit, type ItemUnits } from "@shared/uom";
 import { QuotationDoc, type CompanyInfo } from "../components/QuotationDoc";
 import { CatalogPicker } from "../components/CatalogPicker";
 import { ImportDialog } from "../components/ImportDialog";
@@ -109,6 +110,11 @@ export function QuoteEditorPage() {
   const [modal, setModal] = useState<null | { kind: string; payload?: unknown }>(null);
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
   const [uomOptions, setUomOptions] = useState<string[]>([]);
+  // Per-code base unit + ratios from the catalog, fetched for every coded line
+  // (old quotes and imported lines included) so a unit switch can rescale
+  // COGS/RRP. `unitsFetched` holds codes already asked, found or not.
+  const [unitsByCode, setUnitsByCode] = useState<Record<string, ItemUnits>>({});
+  const [unitsFetched, setUnitsFetched] = useState<Set<string>>(new Set());
   const saved = useRef<string>("");
 
   const load = useCallback(async () => {
@@ -152,6 +158,26 @@ export function QuoteEditorPage() {
       .then((r) => setUomOptions(r.options.map((o) => o.name)))
       .catch(() => undefined);
   }, []);
+
+  const lineCodes = useMemo(
+    () => [...new Set((snapshot?.items ?? []).map((i) => i.code.trim()).filter(Boolean))].sort().join("\n"),
+    [snapshot?.items],
+  );
+  useEffect(() => {
+    const missing = lineCodes ? lineCodes.split("\n").filter((c) => !unitsFetched.has(c)) : [];
+    if (!missing.length) return;
+    api
+      .post<{ units: Record<string, ItemUnits> }>("/catalog/units", { codes: missing })
+      .then((r) => {
+        setUnitsByCode((m) => ({ ...m, ...r.units }));
+        setUnitsFetched((f) => new Set([...f, ...missing]));
+      })
+      // Leave them unfetched: coded lines keep a disabled unit picker rather
+      // than silently switching without conversion.
+      .catch(() => undefined);
+    // unitsFetched is read, not reacted to: re-running on it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineCodes]);
 
   // Warn before leaving with unsaved edits.
   useEffect(() => {
@@ -249,6 +275,13 @@ export function QuoteEditorPage() {
   const updateItem = (itemId: string, patch: Partial<QuoteItem>) =>
     update({ items: snapshot.items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)) });
 
+  const changeItemUom = (itemId: string, uom: string) =>
+    update({
+      items: snapshot.items.map((it) =>
+        it.id === itemId ? changeLineUom(it, uom, unitsByCode[it.code.trim()]) : it,
+      ),
+    });
+
   const removeItem = (itemId: string) =>
     update({ items: renumber(snapshot.items.filter((it) => it.id !== itemId)) });
 
@@ -292,18 +325,32 @@ export function QuoteEditorPage() {
   // silently becomes every other quote's reference price.
   const pushToCatalog = async (itemId: string) => {
     const item = snapshot.items.find((it) => it.id === itemId);
-    if (!item?.code.trim()) return;
+    const code = item?.code.trim();
+    if (!item || !code) return;
+    /* The catalog stores COGS/RRP per base unit, so a line in another unit is
+       converted back first. An existing item's base unit is never sent, since
+       changing it would silently invalidate every ratio stored for it. */
+    const units = unitsByCode[code];
+    let row: { uom?: string; cogs: number; list_price: number };
+    if (units) {
+      const base = toBaseUnit(item, units);
+      if (!base) {
+        toast(
+          `Rasio ${priceUnitOf(item)} ke ${units.baseUom} belum ada untuk "${item.name}". Isi rasionya di Katalog dulu.`,
+          "error",
+        );
+        return;
+      }
+      row = { cogs: base.cogs, list_price: base.rrp };
+    } else if (!unitsFetched.has(code)) {
+      toast("Data satuan katalog masih dimuat, coba lagi sebentar.", "error");
+      return;
+    } else {
+      row = { uom: priceUnitOf(item), cogs: item.cogs, list_price: item.rrp };
+    }
     try {
       const r = await api.post<{ inserted: number; updated: number }>("/catalog/import", {
-        rows: [
-          {
-            code: item.code.trim(),
-            name: item.name,
-            uom: item.uom,
-            cogs: item.cogs,
-            list_price: item.rrp,
-          },
-        ],
+        rows: [{ code, name: item.name, ...row }],
         source: `quote:${quote.number}`,
         mode: "merge",
       });
@@ -483,6 +530,9 @@ export function QuoteEditorPage() {
                   scenario={scenario}
                   readOnly={readOnly}
                   onUpdate={updateItem}
+                  onChangeUom={changeItemUom}
+                  unitsByCode={unitsByCode}
+                  unitsPending={(code) => !!code.trim() && !unitsFetched.has(code.trim())}
                   onRemove={removeItem}
                   onAdd={addBlank}
                   onOpenCatalog={() => setModal({ kind: "catalog" })}

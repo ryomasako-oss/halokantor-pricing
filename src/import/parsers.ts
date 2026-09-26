@@ -11,7 +11,8 @@
 
 import * as XLSX from "xlsx";
 import { toNum } from "@shared/format";
-import type { ItemRole, QuoteItem } from "@shared/types";
+import type { ItemRole, QuoteItem, UnitFactor } from "@shared/types";
+import { cleanUnits } from "@shared/uom";
 
 export interface CatalogRow {
   code: string;
@@ -21,6 +22,8 @@ export interface CatalogRow {
   list_price?: number;
   stock?: number;
   category?: string;
+  /** Extra units with their ratio to `uom`. Absent = leave the stored ones alone. */
+  units?: UnitFactor[];
 }
 
 export interface ImportReport {
@@ -202,6 +205,16 @@ export async function parseItemMaster(file: File): Promise<{ rows: CatalogRow[];
   const priceCol = header.findIndex((h) => /hrg\.? jual|harga jual/.test(h));
   const stockCol = header.findIndex((h) => /^kts|kuantitas/.test(h));
   const typeCol = header.findIndex((h) => /jenis barang/.test(h));
+  /* The full "Daftar Barang" export also carries units: "Satuan" is the base
+     unit, "Satuan #2..#5" with "Rasio Satuan #2..#5" are extra units and how
+     many base units each holds. Exact header matches only: "Def. Hrg. Jual
+     Satuan #1" also contains "satuan". The shorter report has none of these
+     columns, and then the stored units are left untouched. */
+  const baseUomCol = header.findIndex((h) => h === "satuan");
+  const unitCols = [2, 3, 4, 5]
+    .map((n) => ({ uom: header.indexOf(`satuan #${n}`), ratio: header.indexOf(`rasio satuan #${n}`) }))
+    .filter((c) => c.uom >= 0 && c.ratio >= 0);
+  let withUnits = 0;
 
   const out: CatalogRow[] = [];
   let category = "";
@@ -225,9 +238,19 @@ export async function parseItemMaster(file: File): Promise<{ rows: CatalogRow[];
     }
     const price = priceCol >= 0 ? toNum(row[priceCol]) : NaN;
     if (price > 0) priced++;
+    const uom = baseUomCol >= 0 ? text(row[baseUomCol]) : "";
+    const units = unitCols.length
+      ? cleanUnits(
+          uom,
+          unitCols.map((c) => ({ uom: text(row[c.uom]), factor: toNum(row[c.ratio]) })),
+        )
+      : undefined;
+    if (units?.length) withUnits++;
     out.push({
       code,
       name,
+      ...(uom ? { uom } : {}),
+      ...(units ? { units } : {}),
       list_price: price > 0 ? Math.round(price) : 0,
       stock: stockCol >= 0 && Number.isFinite(toNum(row[stockCol])) ? toNum(row[stockCol]) : 0,
       category,
@@ -247,6 +270,7 @@ export async function parseItemMaster(file: File): Promise<{ rows: CatalogRow[];
         out.length - priced > 0
           ? `${out.length - priced} item belum punya harga jual di master, plafonnya harus diisi manual.`
           : "",
+        unitCols.length ? `${withUnits} item punya satuan tambahan dengan rasio (mis. 1 BOX = 24 BTL).` : "",
       ].filter(Boolean),
     },
   };
@@ -295,7 +319,7 @@ export async function parseFullCatalog(file: File): Promise<{ rows: CatalogRow[]
   const col = {
     code: header.findIndex((h) => /kode barang|^kode$/.test(h)),
     name: header.findIndex((h) => /nama barang|^nama$/.test(h)),
-    uom: header.findIndex((h) => /satuan|uom/.test(h)),
+    uom: header.findIndex((h) => /^(satuan|uom)$/.test(h)),
     category: header.findIndex((h) => /kategori/.test(h)),
     cogs: header.findIndex((h) => /cogs|hpp|harga pokok/.test(h)),
     listPrice: header.findIndex((h) => /harga jual|rrp|list price/.test(h)),
@@ -321,7 +345,10 @@ export async function parseFullCatalog(file: File): Promise<{ rows: CatalogRow[]
     out.push({
       code,
       name,
-      uom: col.uom >= 0 ? text(row[col.uom]) || "Pcs" : "Pcs",
+      /* Blank stays blank: the server defaults new items to Pcs and keeps an
+         existing item's base unit, which its stored ratios depend on. The
+         merge ("gabung") import would otherwise reset BTL/BOX items to Pcs. */
+      uom: col.uom >= 0 ? text(row[col.uom]) || undefined : undefined,
       category: col.category >= 0 ? text(row[col.category]) : "",
       cogs: col.cogs >= 0 && toNum(row[col.cogs]) > 0 ? Math.round(toNum(row[col.cogs])) : 0,
       list_price:

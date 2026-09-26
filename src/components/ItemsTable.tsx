@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { SCENARIOS } from "@shared/engine";
 import { grp, pct } from "@shared/format";
 import type { ComputedRow, EngineResult, ItemRole, QuoteItem, ScenarioIndex } from "@shared/types";
+import { uomChoices, uomWarning, type ItemUnits } from "@shared/uom";
 import { Icon } from "./Icon";
 import { LineBadge } from "./pricing";
 
@@ -20,6 +21,12 @@ interface Props {
   onPushToCatalog?: (id: string) => void;
   /** Managed UOM list for the inline satuan picker; empty falls back to a plain label. */
   uomOptions?: string[];
+  /** Switches a line's unit, rescaling COGS/RRP/manual price (shared/uom.ts). */
+  onChangeUom: (id: string, uom: string) => void;
+  /** Catalog base unit + ratios per item code. */
+  unitsByCode?: Record<string, ItemUnits>;
+  /** True while a coded line's ratios are still loading; its picker stays disabled. */
+  unitsPending?: (code: string) => boolean;
 }
 
 type SortKey = "lineNo" | "name" | "qty" | "cogs" | "rrp" | "margin" | "value";
@@ -38,6 +45,9 @@ export function ItemsTable({
   onOpenCatalog,
   onPushToCatalog,
   uomOptions = [],
+  onChangeUom,
+  unitsByCode = {},
+  unitsPending = () => false,
 }: Props) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "lineNo", dir: 1 });
@@ -208,14 +218,32 @@ export function ItemsTable({
                         <select
                           className="cell uom"
                           value={r.uom}
-                          onChange={(e) => onUpdate(r.id, { uom: e.target.value })}
+                          disabled={unitsPending(r.code)}
+                          onChange={(e) => onChangeUom(r.id, e.target.value)}
                           aria-label={`Satuan ${r.name}`}
                         >
-                          {!uomOptions.includes(r.uom) && r.uom && <option value={r.uom}>{r.uom}</option>}
-                          {uomOptions.map((u) => (
+                          {uomChoices(uomOptions, unitsByCode[r.code.trim()], r.uom).map((u) => (
                             <option key={u} value={u}>{u}</option>
                           ))}
                         </select>
+                      )}
+                      {uomWarning(r) && (
+                        <div className="small uom-warn" title={uomWarning(r)!}>
+                          <Icon name="alert" size={12} /> Rasio belum ada
+                          {!readOnly && (
+                            /* Explicit, not implied by editing COGS: fixing
+                               only COGS would leave RRP (the client ceiling)
+                               silently in the old unit. */
+                            <button
+                              type="button"
+                              className="link-btn"
+                              onClick={() => onUpdate(r.id, { priceUom: undefined })}
+                              title={`COGS dan RRP sudah dicek dan benar per ${r.uom}`}
+                            >
+                              Sudah dicek
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td>

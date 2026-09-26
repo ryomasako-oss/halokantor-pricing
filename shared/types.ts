@@ -71,6 +71,12 @@ export interface QuoteItem {
    */
   manualPrice?: (number | null)[];
   notes?: string;
+  /**
+   * The unit cogs/rrp/manualPrice are actually expressed in, set only when a
+   * UOM switch could not convert them (no ratio for the new unit). Absent
+   * means they are per `uom`. See shared/uom.ts.
+   */
+  priceUom?: string;
 }
 
 export interface Region {
@@ -268,6 +274,14 @@ export interface CatalogItem {
   category: string;
   source: string;
   updated_at: string;
+  /** Extra units and how many base units (`uom`) each holds, e.g. Box = 24. */
+  units?: UnitFactor[];
+}
+
+export interface UnitFactor {
+  uom: string;
+  /** Number of base units in one of this unit. Always > 0. */
+  factor: number;
 }
 
 export interface AuditEntry {

@@ -6,7 +6,8 @@ import { Icon } from "../components/Icon";
 import { Modal } from "../components/Modal";
 import { ImportDialog } from "../components/ImportDialog";
 import { fmtDateTime, grp } from "@shared/format";
-import type { CatalogItem } from "@shared/types";
+import type { CatalogItem, UnitFactor } from "@shared/types";
+import { cleanUnits, sameUom } from "@shared/uom";
 
 interface Stats {
   total: number;
@@ -15,7 +16,9 @@ interface Stats {
   updated: string | null;
 }
 
-const EMPTY_ITEM = { code: "", name: "", uom: "Pcs", cogs: 0, list_price: 0, category: "" };
+const EMPTY_ITEM = {
+  code: "", name: "", uom: "Pcs", cogs: 0, list_price: 0, category: "", units: [] as UnitFactor[],
+};
 type EditingItem = typeof EMPTY_ITEM & { id?: number };
 
 export function CatalogPage() {
@@ -34,6 +37,8 @@ export function CatalogPage() {
   const [uomOptions, setUomOptions] = useState<string[]>([]);
   const [addingUom, setAddingUom] = useState(false);
   const [newUom, setNewUom] = useState("");
+  // The base unit when the form opened: ratios are relative to it.
+  const [baseAtOpen, setBaseAtOpen] = useState("");
   const PAGE = 50;
 
   const load = useCallback(() => {
@@ -59,6 +64,7 @@ export function CatalogPage() {
   const openEditing = (item: EditingItem) => {
     setAddingUom(false);
     setNewUom("");
+    setBaseAtOpen(item.uom);
     setEditing(item);
   };
   const closeEditing = () => {
@@ -249,7 +255,14 @@ export function CatalogPage() {
                       <td className="l muted num">{item.code}</td>
                       <td className="l">{item.name}</td>
                       <td className="l muted small">{item.category || "—"}</td>
-                      <td className="c muted">{item.uom}</td>
+                      <td className="c muted">
+                        {item.uom}
+                        {!!item.units?.length && (
+                          <div className="small nowrap">
+                            {item.units.map((u) => `${u.uom} = ${u.factor}`).join(" · ")}
+                          </div>
+                        )}
+                      </td>
                       <td className="num">
                         {item.cogs > 0 ? grp(item.cogs) : <span className="badge amber">kosong</span>}
                       </td>
@@ -257,7 +270,7 @@ export function CatalogPage() {
                       <td className="num muted">{grp(item.stock)}</td>
                       {can("edit_catalog") && (
                         <td>
-                          <button className="btn small ghost" onClick={() => openEditing({ ...item })}>Ubah</button>
+                          <button className="btn small ghost" onClick={() => openEditing({ ...item, units: item.units ?? [] })}>Ubah</button>
                         </td>
                       )}
                     </tr>
@@ -403,6 +416,7 @@ export function CatalogPage() {
                         cogs: Number(editing.cogs),
                         list_price: Number(editing.list_price),
                         category: editing.category,
+                        units: cleanUnits(editing.uom, editing.units),
                       });
                       toast("Barang diperbarui.", "success");
                     } else {
@@ -415,6 +429,7 @@ export function CatalogPage() {
                             cogs: Number(editing.cogs),
                             list_price: Number(editing.list_price),
                             category: editing.category,
+                            units: cleanUnits(editing.uom, editing.units),
                           },
                         ],
                         source: "manual",
@@ -537,9 +552,99 @@ export function CatalogPage() {
                 />
               </label>
             </div>
+            {!!editing.id && editing.units.length > 0 && !sameUom(editing.uom, baseAtOpen) && (
+              <p className="small uom-warn" style={{ margin: 0, whiteSpace: "normal" }}>
+                <Icon name="alert" size={12} /> Satuan dasar diganti dari {baseAtOpen} ke {editing.uom}. Rasio di
+                bawah sekarang dihitung per {editing.uom}, cek ulang angkanya sebelum simpan.
+              </p>
+            )}
+            <UnitsEditor
+              baseUom={editing.uom}
+              units={editing.units}
+              options={uomOptions}
+              onChange={(units) => setEditing({ ...editing, units })}
+            />
           </div>
         </Modal>
       )}
     </main>
+  );
+}
+
+/* Extra units for one item, each with how many base units it holds. The
+   quote editor uses these to rescale COGS/RRP when a line's unit changes. */
+function UnitsEditor({
+  baseUom,
+  units,
+  options,
+  onChange,
+}: {
+  baseUom: string;
+  units: UnitFactor[];
+  options: string[];
+  onChange: (units: UnitFactor[]) => void;
+}) {
+  const set = (i: number, patch: Partial<UnitFactor>) =>
+    onChange(units.map((u, k) => (k === i ? { ...u, ...patch } : u)));
+  const unused = options.filter((o) => !sameUom(o, baseUom) && !units.some((u) => sameUom(u.uom, o)));
+  return (
+    <div className="field">
+      <span>Satuan lain dan rasionya</span>
+      {units.length === 0 && (
+        <p className="muted small" style={{ margin: 0 }}>
+          Belum ada. Tanpa rasio, mengganti satuan di quotation tidak mengubah COGS/RRP.
+        </p>
+      )}
+      {units.map((u, i) => (
+        <div key={i} className="row-wrap" style={{ gap: 6, alignItems: "center" }}>
+          <span className="small">1</span>
+          <select
+            className="select"
+            style={{ width: "auto" }}
+            value={u.uom}
+            onChange={(e) => set(i, { uom: e.target.value })}
+            aria-label={`Satuan lain ${i + 1}`}
+          >
+            {!options.some((o) => sameUom(o, u.uom)) && <option value={u.uom}>{u.uom}</option>}
+            {options
+              .filter((o) => sameUom(o, u.uom) || (!sameUom(o, baseUom) && !units.some((x) => sameUom(x.uom, o))))
+              .map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+          </select>
+          <span className="small">=</span>
+          <input
+            className="input"
+            style={{ width: 90 }}
+            type="number"
+            min="0"
+            step="any"
+            value={u.factor || ""}
+            onChange={(e) => set(i, { factor: Number(e.target.value) })}
+            aria-label={`Rasio ${u.uom}`}
+          />
+          <span className="small">{baseUom}</span>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => onChange(units.filter((_, k) => k !== i))}
+            aria-label={`Hapus satuan ${u.uom}`}
+          >
+            <Icon name="trash" size={15} />
+          </button>
+        </div>
+      ))}
+      {unused.length > 0 && units.length < 10 && (
+        <div>
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => onChange([...units, { uom: unused[0], factor: 0 }])}
+          >
+            + Tambah satuan lain
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

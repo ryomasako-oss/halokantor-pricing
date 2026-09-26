@@ -339,6 +339,7 @@ a { color: var(--navy); }
 .cell:focus { border-color: var(--navy); background: var(--field); outline: 0; }
 .cell.l { text-align: left; width: 100%; min-width: 120px; }
 .cell.uom { width: auto; text-align: left; font-size: 12px; padding: 2px 4px; }
+.uom-warn { color: var(--warn); display: flex; align-items: center; gap: 3px; margin-top: 3px; white-space: nowrap; cursor: help; }
 .cell.est { background: var(--warn-bg); }
 .cell.manual { background: var(--s1-bg); font-weight: 650; }
 select.cell { text-align: left; width: 88px; }

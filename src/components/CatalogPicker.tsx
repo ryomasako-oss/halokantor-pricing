@@ -6,6 +6,7 @@ import { api } from "../api";
 import { grp } from "@shared/format";
 import { normalizeCode } from "@shared/duplicates";
 import type { CatalogItem, QuoteItem } from "@shared/types";
+import { changeLineUom, uomChoices, uomWarning } from "@shared/uom";
 import { Modal } from "./Modal";
 import { Icon } from "./Icon";
 
@@ -31,8 +32,9 @@ export function CatalogPicker({
   const [pickedItems, setPickedItems] = useState<Record<number, CatalogItem>>({});
   const [onlyPriced, setOnlyPriced] = useState(true);
   // Managed satuan list. A row's UOM can be switched at pick time (e.g. an
-  // item mastered in Pcs but ordered per Lusin); the override only applies to
-  // the quote line, never to the catalog master.
+  // item mastered in Pcs but ordered per Lusin); COGS/RRP are rescaled with
+  // the item's ratio, and the override only applies to the quote line, never
+  // to the catalog master.
   const [uomOptions, setUomOptions] = useState<string[]>([]);
   const [uomOverride, setUomOverride] = useState<Record<number, string>>({});
 
@@ -66,24 +68,31 @@ export function CatalogPicker({
     [chosen],
   );
 
+  /** The quote line for an item, built in its base unit, then converted to the chosen unit. */
+  const lineFor = (item: CatalogItem, qty: number): QuoteItem => {
+    const baseUom = item.uom || "Pcs";
+    const base: QuoteItem = {
+      id: `cat-${item.id}-${Math.random().toString(36).slice(2, 7)}`,
+      lineNo: 0,
+      code: item.code,
+      name: item.name,
+      uom: baseUom,
+      qty,
+      cogs: Math.round(item.cogs),
+      // The master's list price is the natural starting ceiling.
+      rrp: Math.round(item.list_price || item.cogs * 1.4),
+      role: "CORE",
+      estCogs: !(item.cogs > 0),
+    };
+    const to = uomOverride[item.id];
+    return to ? changeLineUom(base, to, { baseUom, units: item.units ?? [] }) : base;
+  };
+
   const add = () => {
     const picked = selected
       .map(([id, qty]) => {
         const item = pickedItems[Number(id)];
-        if (!item) return null;
-        return {
-          id: `cat-${item.id}-${Math.random().toString(36).slice(2, 7)}`,
-          lineNo: 0,
-          code: item.code,
-          name: item.name,
-          uom: uomOverride[item.id] || item.uom || "Pcs",
-          qty,
-          cogs: Math.round(item.cogs),
-          // The master's list price is the natural starting ceiling.
-          rrp: Math.round(item.list_price || item.cogs * 1.4),
-          role: "CORE" as const,
-          estCogs: !(item.cogs > 0),
-        };
+        return item ? lineFor(item, qty) : null;
       })
       .filter(Boolean) as QuoteItem[];
     onAdd(picked);
@@ -145,7 +154,10 @@ export function CatalogPicker({
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
+              {items.map((item) => {
+                const line = lineFor(item, 0);
+                const warn = uomWarning(line);
+                return (
                 <tr key={item.id}>
                   <td className="l">
                     <div style={{ fontWeight: 550 }}>{item.name}</div>
@@ -157,8 +169,8 @@ export function CatalogPicker({
                       )}
                     </div>
                   </td>
-                  <td className="num">{item.cogs > 0 ? grp(item.cogs) : <span className="muted">—</span>}</td>
-                  <td className="num">{item.list_price > 0 ? grp(item.list_price) : <span className="muted">—</span>}</td>
+                  <td className="num">{item.cogs > 0 ? grp(line.cogs) : <span className="muted">—</span>}</td>
+                  <td className="num">{item.list_price > 0 ? grp(line.rrp) : <span className="muted">—</span>}</td>
                   <td className="num muted">{grp(item.stock)}</td>
                   <td className="c">
                     {uomOptions.length === 0 ? (
@@ -170,13 +182,15 @@ export function CatalogPicker({
                         onChange={(e) => setUomOverride((u) => ({ ...u, [item.id]: e.target.value }))}
                         aria-label={`Satuan ${item.name}`}
                       >
-                        {item.uom && !uomOptions.includes(item.uom) && (
-                          <option value={item.uom}>{item.uom}</option>
-                        )}
-                        {uomOptions.map((u) => (
+                        {uomChoices(uomOptions, { baseUom: item.uom || "Pcs", units: item.units ?? [] }, item.uom || "Pcs").map((u) => (
                           <option key={u} value={u}>{u}</option>
                         ))}
                       </select>
+                    )}
+                    {warn && (
+                      <div className="small uom-warn" title={warn}>
+                        <Icon name="alert" size={12} /> Rasio belum ada
+                      </div>
                     )}
                   </td>
                   <td>
@@ -194,7 +208,8 @@ export function CatalogPicker({
                     />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

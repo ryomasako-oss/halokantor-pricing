@@ -139,6 +139,14 @@ CREATE TABLE IF NOT EXISTS uom_options (
 );
 INSERT OR IGNORE INTO uom_options(name)
   VALUES ('Pcs'), ('Lusin'), ('Box'), ('Rim'), ('Pak'), ('Set'), ('Unit'), ('Roll');
+
+-- Mirrors migrations/0007_catalog_item_uoms.sql.
+CREATE TABLE IF NOT EXISTS catalog_item_uoms (
+  code   TEXT NOT NULL,
+  uom    TEXT NOT NULL COLLATE NOCASE,
+  factor REAL NOT NULL CHECK (factor > 0),
+  PRIMARY KEY (code, uom)
+);
 `);
 
 // The CREATE TABLE above only adds `version` for a fresh database; migrate

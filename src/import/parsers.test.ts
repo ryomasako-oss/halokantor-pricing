@@ -4,8 +4,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import * as XLSX from "xlsx";
 import { describe, expect, it } from "vitest";
-import { detectKind, parseClientList, parseInventory, parseItemMaster } from "./parsers.js";
+import { detectKind, parseClientList, parseFullCatalog, parseInventory, parseItemMaster } from "./parsers.js";
 
 const SAMPLES = path.join(os.homedir(), "Downloads");
 const inventoryFile = path.join(SAMPLES, "PT Salvator Inti Pratama Inventory.xlsx");
@@ -74,6 +75,59 @@ describe.skipIf(!has(masterFile))("item master import", () => {
       expect(r.code).toBeTruthy();
       expect(r.name).toBeTruthy();
     }
+  });
+
+  it("leaves units untouched: this short report has no Satuan columns", async () => {
+    const { rows } = await parseItemMaster(asFile(masterFile));
+    expect(rows.every((r) => r.uom === undefined && r.units === undefined)).toBe(true);
+  });
+});
+
+const fullMasterFile = path.join(SAMPLES, "daftar-barang (2).xlsx");
+
+describe.skipIf(!has(fullMasterFile))("full item master export with units", () => {
+  it("reads the base unit and Satuan #2 ratios", async () => {
+    const { rows, report } = await parseItemMaster(asFile(fullMasterFile));
+    const sambal = rows.find((r) => r.code === "80802930");
+    expect(sambal).toMatchObject({ uom: "BTL", units: [{ uom: "BOX", factor: 24 }] });
+    const pad = rows.find((r) => r.code === "80802506");
+    expect(pad).toMatchObject({ uom: "PCS", units: [] });
+    expect(report.notes.some((n) => /satuan tambahan/.test(n))).toBe(true);
+  });
+});
+
+describe("item master unit columns", () => {
+  const sheetFile = (grid: unknown[][]) => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(grid), "Daftar Barang");
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+    return new File([buf], "daftar.xlsx");
+  };
+
+  it("maps Satuan / Satuan #n / Rasio Satuan #n, never the price column", async () => {
+    const { rows } = await parseItemMaster(
+      sheetFile([
+        ["Kode Barang", "Nama Barang", "Satuan", "Satuan #2", "Rasio Satuan #2", "Satuan #3", "Rasio Satuan #3", "Def. Hrg. Jual Satuan #1"],
+        ["A1", "Pulpen", "PCS", "LUSIN", "12.000000", "BOX", "144.000000", "3500.000000"],
+        ["A2", "Kertas", "RIM", "", "", "", "", "0"],
+        ["A3", "Map", "PCS", "pcs", "1.000000", "PAK", "0", "0"],
+      ]),
+    );
+    expect(rows[0]).toMatchObject({ uom: "PCS", list_price: 3500, units: [{ uom: "LUSIN", factor: 12 }, { uom: "BOX", factor: 144 }] });
+    expect(rows[1]).toMatchObject({ uom: "RIM", units: [] });
+    // A same-as-base entry and a zero ratio are both dropped.
+    expect(rows[2]).toMatchObject({ uom: "PCS", units: [] });
+  });
+  it("full catalog template: a blank Satuan cell sends no unit, so a merge keeps the stored base", async () => {
+    const { rows } = await parseFullCatalog(
+      sheetFile([
+        ["Kode Barang", "Nama Barang", "Satuan", "COGS"],
+        ["B1", "Sambal", "", "12000"],
+        ["B2", "Pulpen", "Lusin", "1000"],
+      ]),
+    );
+    expect(rows[0].uom).toBeUndefined();
+    expect(rows[1].uom).toBe("Lusin");
   });
 });
 
