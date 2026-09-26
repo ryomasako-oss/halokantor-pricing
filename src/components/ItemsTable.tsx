@@ -148,6 +148,7 @@ export function ItemsTable({
                 {head("lineNo", "No", "c")}
                 {head("name", "Item", "l", 230)}
                 {head("qty", "Qty")}
+                <th>UOM</th>
                 {head("cogs", "COGS")}
                 {head("rrp", "RRP")}
                 <th>Role S2</th>
@@ -182,25 +183,11 @@ export function ItemsTable({
                           aria-label={`Nama item baris ${r.lineNo}`}
                         />
                       )}
-                      <div className="muted small row-wrap" style={{ gap: 4, alignItems: "center" }}>
-                        {r.code ? `${r.code} · ` : ""}
-                        {readOnly || uomOptions.length === 0 ? (
-                          r.uom
-                        ) : (
-                          <select
-                            className="cell uom"
-                            value={r.uom}
-                            onChange={(e) => onUpdate(r.id, { uom: e.target.value })}
-                            aria-label={`Satuan ${r.name}`}
-                          >
-                            {!uomOptions.includes(r.uom) && r.uom && <option value={r.uom}>{r.uom}</option>}
-                            {uomOptions.map((u) => (
-                              <option key={u} value={u}>{u}</option>
-                            ))}
-                          </select>
-                        )}
-                        {r.estCogs ? " · COGS estimasi" : ""}
-                      </div>
+                      {(r.code || r.estCogs) && (
+                        <div className="muted small">
+                          {[r.code, r.estCogs ? "COGS estimasi" : ""].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <input
@@ -213,6 +200,23 @@ export function ItemsTable({
                         onFocus={selectOnFocus}
                         aria-label={`Qty ${r.name}`}
                       />
+                    </td>
+                    <td>
+                      {readOnly || uomOptions.length === 0 ? (
+                        <div className="nowrap">{r.uom}</div>
+                      ) : (
+                        <select
+                          className="cell uom"
+                          value={r.uom}
+                          onChange={(e) => onUpdate(r.id, { uom: e.target.value })}
+                          aria-label={`Satuan ${r.name}`}
+                        >
+                          {!uomOptions.includes(r.uom) && r.uom && <option value={r.uom}>{r.uom}</option>}
+                          {uomOptions.map((u) => (
+                            <option key={u} value={u}>{u}</option>
+                          ))}
+                        </select>
+                      )}
                     </td>
                     <td>
                       <input
